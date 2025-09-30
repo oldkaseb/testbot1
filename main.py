@@ -158,7 +158,8 @@ TYPING_SENTENCES = [
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
 BOARD_WIDTH, BOARD_HEIGHT = 10, 20
-EMPTY_CELL = "⬜️"
+# توجه: بین دو علامت کوتیشن یک کاراکتر نامرئی وجود دارد. کافیست آن را کپی کنید.
+EMPTY_CELL = "​"
 FILLED_CELL = "⬛️"
 
 # تعریف شکل‌ها و چرخش‌های هر قطعه
@@ -355,8 +356,8 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # شناسه کاربر به انتهای callback_data اضافه می‌شود تا پنل اختصاصی شود
         keyboard = [
             [InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
-            [InlineKeyboardButton("✍️ بازی‌های تایپی و سرعتی", callback_data=f"rsgame_cat_typing_{user_id}")],
             [InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}")],
+            [InlineKeyboardButton("✍️ بازی‌های تایپی و سرعتی", callback_data=f"rsgame_cat_typing_{user_id}")],
             [InlineKeyboardButton("🤫 بازی‌های ناشناس (ویژه ادمین)", callback_data=f"rsgame_cat_anon_{user_id}")],
             [InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")]
         ]
@@ -1751,13 +1752,12 @@ def clear_lines(board):
     return new_board, score_map.get(len(lines_to_clear), 0)
 
 async def render_tetris_board(game):
-    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند."""
+    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند. (نسخه HTML)"""
     game_id = game['game_id']
-    board = [row[:] for row in game['board']] # ایجاد یک کپی برای جلوگیری از تغییر ناخواسته
+    board = [row[:] for row in game['board']]
     current_piece = game['current_piece']
     score = game['score']
 
-    # قطعه فعلی را روی صفحه کپی شده "رسم" کن
     if current_piece:
         piece_matrix = get_piece_matrix(current_piece)
         color = PIECE_COLORS[current_piece['shape_name']]
@@ -1767,7 +1767,9 @@ async def render_tetris_board(game):
                     board[current_piece['y'] + r][current_piece['x'] + c] = color
     
     board_str = "\n".join("".join(row) for row in board)
-    text = f"🧱 **تتریس**\nامتیاز: **{score}**\n\n`{board_str}`"
+    
+    # استفاده از تگ <pre><code> برای نمایش مرتب
+    text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
     
     keyboard = [
         [
@@ -1783,6 +1785,7 @@ async def render_tetris_board(game):
 
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    user = query.from_user # <-- آیدی کاربر کلیک‌کننده از اینجا می‌آید
     chat_id = query.message.chat.id
     if await check_ban_status(update, context): return
     
@@ -1798,6 +1801,7 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         game = {
             "game_id": game_id,
+            "player_id": user.id, # <-- نکته ۱: آیدی بازیکن در اینجا ذخیره می‌شود
             "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
             "current_piece": create_new_piece(),
             "score": 0,
@@ -1806,33 +1810,36 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
-        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
         
         try: await query.message.delete()
         except Exception: pass
         return
 
     game_id = int(data[2])
-    if action == "close":
-        await query.answer()
-        if chat_id in active_games['tetris'] and game_id in active_games['tetris'][chat_id]:
-            del active_games['tetris'][chat_id][game_id]
-        await query.edit_message_text("بازی تتریس بسته شد.")
-        return
-
+    
     if chat_id not in active_games['tetris'] or game_id not in active_games['tetris'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
         
     game = active_games['tetris'][chat_id][game_id]
+
+    # <-- نکته ۲: بررسی امنیتی در تمام اکشن‌ها
+    if user.id != game.get('player_id'):
+        return await query.answer("این بازی برای شما نیست!", show_alert=True)
+
+    if action == "close":
+        await query.answer()
+        del active_games['tetris'][chat_id][game_id]
+        await query.edit_message_text("بازی تتریس بسته شد.")
+        return
+
     if game['status'] != 'playing': return await query.answer()
 
     if action == "move":
         await query.answer()
         direction = data[3]
         piece = game['current_piece']
-        
-        # یک کپی از قطعه برای تست حرکت ایجاد کن
         test_piece = piece.copy()
 
         if direction == 'left': test_piece['x'] -= 1
@@ -1843,37 +1850,30 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             test_piece['rotation'] = (test_piece['rotation'] + 1) % num_rotations
         
         elif direction == 'drop':
-            # پیدا کردن پایین‌ترین موقعیت معتبر و قفل کردن قطعه
-            while is_valid_position(game['board'], piece):
-                piece['y'] += 1
-            piece['y'] -= 1 # بازگشت به آخرین موقعیت معتبر
+            while is_valid_position(game['board'], piece): piece['y'] += 1
+            piece['y'] -= 1
             
             game['board'] = lock_piece(game['board'], piece)
             game['board'], score_inc = clear_lines(game['board'])
             game['score'] += score_inc
             
-            # ایجاد قطعه جدید و چک کردن پایان بازی
             game['current_piece'] = create_new_piece()
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
                 text, _ = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML) # تغییر به HTML
                 await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
                 del active_games['tetris'][chat_id][game_id]
                 return
             
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
             return
 
-        # اگر حرکت جدید معتبر بود، آن را اعمال کن
         if is_valid_position(game['board'], test_piece):
             game['current_piece'] = test_piece
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-        else:
-            # اگر نامعتبر بود، به کاربر اطلاع بده (اختیاری)
-            pass # await query.answer("حرکت نامعتبر!")
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
 
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

@@ -426,30 +426,13 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 import asyncio
 
 async def rsgame_close_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پنل بازی را می‌بندد و مالکیت آن را بررسی می‌کند."""
+    """پنل بازی را می‌بندد."""
     query = update.callback_query
-    
-    # -- بخش بررسی مالکیت پنل --
-    data = query.data.split('_')
-    try:
-        target_user_id = int(data[-1])
-    except (ValueError, IndexError):
-        await query.answer("خطا: دکمه منقضی شده است.", show_alert=True)
-        return
-
-    clicker_user_id = query.from_user.id
-
-    if clicker_user_id != target_user_id:
-        await query.answer("این پنل برای شما نیست!", show_alert=True)
-        return
-    # -- پایان بخش بررسی --
-
     await query.answer()
     try:
-        # ویرایش پیام به "پنل بسته شد"
         await query.edit_message_text("پنل بسته شد.")
     except Exception:
-        # اگر ویرایش ممکن نبود (مثلا پیام قدیمی بود)، آن را حذف می‌کند
+        # اگر پیام خیلی قدیمی باشد یا مشکلی در ویرایش پیش بیاید، آن را حذف می‌کنیم
         try:
             await query.delete_message()
         except Exception:
@@ -1707,7 +1690,7 @@ def main() -> None:
     
     # --- Conversation Handlers (باید اولویت بالاتری داشته باشند) ---
     gharch_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(gharch_start_callback, pattern='^gharch_start$')],
+        entry_points=[CallbackQueryHandler(gharch_start_callback, pattern=r'^gharch_start_')],
         states={
             ASKING_GOD_USERNAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_god_username)],
             CONFIRMING_GOD: [CallbackQueryHandler(confirm_god, pattern=r'^gharch_confirm_god_')],
@@ -1717,7 +1700,7 @@ def main() -> None:
     )
     
     guess_number_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(hads_addad_start_callback, pattern='^hads_addad_start$')],
+        entry_points=[CallbackQueryHandler(hads_addad_start_callback, pattern=r'^hads_addad_start_')],
         states={
             SELECTING_RANGE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_range)],
             GUESSING: [MessageHandler(filters.Regex(r'^[\d۰-۹]+$'), handle_guess_conversation)],
@@ -1727,7 +1710,7 @@ def main() -> None:
     )
 
     eteraf_conv = ConversationHandler(
-        entry_points=[CallbackQueryHandler(eteraf_start_callback, pattern='^eteraf_start_custom$')],
+        entry_points=[CallbackQueryHandler(eteraf_start_callback, pattern=r'^eteraf_start_custom_')],
         states={
             ENTERING_ETERAF_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_eteraf_text)]
         },
@@ -1760,14 +1743,15 @@ def main() -> None:
 
     application.add_handler(CallbackQueryHandler(rsgame_check_join_callback, pattern=r'^rsgame_check_join$'))
 
-    application.add_handler(CallbackQueryHandler(rsgame_close_callback, pattern=r'^rsgame_close_'))
     # پنل اصلی
     application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))
     application.add_handler(CallbackQueryHandler(rsgame_pv_callback, pattern=r'^rsgame_cat_main_pv$'))
     # شروع بازی‌ها از پنل
-    application.add_handler(CallbackQueryHandler(hads_kalame_start_callback, pattern='^hads_kalame_start$'))
-    application.add_handler(CallbackQueryHandler(type_start_callback, pattern='^type_start$'))
-    application.add_handler(CallbackQueryHandler(eteraf_start_callback, pattern='^eteraf_start_default$'))
+    # FIX: الگوها را اصلاح کنید
+    application.add_handler(CallbackQueryHandler(rsgame_close_callback, pattern=r'^rsgame_close_'))
+    application.add_handler(CallbackQueryHandler(hads_kalame_start_callback, pattern=r'^hads_kalame_start_'))
+    application.add_handler(CallbackQueryHandler(type_start_callback, pattern=r'^type_start_'))
+    application.add_handler(CallbackQueryHandler(eteraf_start_callback, pattern=r'^eteraf_start_default_'))
     # مدیریت داخلی بازی‌ها
     application.add_handler(CallbackQueryHandler(hokm_callback, pattern=r'^hokm_'))
     application.add_handler(CallbackQueryHandler(dooz_callback, pattern=r'^dooz_'))

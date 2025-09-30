@@ -194,7 +194,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -397,6 +397,20 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton(" دوز (دو نفره) ", callback_data=f"dooz_start_2p_{user_id}")],
             [InlineKeyboardButton(" چهار در یک ردیف ", callback_data=f"connect4_start_{user_id}")],
             [InlineKeyboardButton(" سنگ کاغذ قیچی ✂️", callback_data=f"rps_start_{user_id}")],
+            [InlineKeyboardButton("🧠 بازی حافظه", callback_data=f"rsgame_cat_memory_{user_id}")],
+            [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
+        ]
+    elif category == "memory":
+        text = "🧠 لطفا سطح بازی حافظه را انتخاب کنید:"
+        keyboard = [
+            [
+                InlineKeyboardButton("آسان (4x3)", callback_data=f"memory_start_4x3_{user_id}"),
+                InlineKeyboardButton("متوسط (4x4)", callback_data=f"memory_start_4x4_{user_id}")
+            ],
+            [
+                InlineKeyboardButton("سخت (6x4)", callback_data=f"memory_start_6x4_{user_id}"),
+                InlineKeyboardButton("حرفه‌ای (6x6)", callback_data=f"memory_start_6x6_{user_id}")
+            ],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
         ]
     elif category == "typing":
@@ -1244,6 +1258,186 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
             del active_games['rps'][chat_id][game_id]
 
+# --------------------------- GAME: MEMORY GAME (جدید) ---------------------------
+import asyncio
+
+# --- لیست ایموجی‌ها برای بازی حافظه ---
+MEMORY_EMOJIS = [
+    "🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦",
+    "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷"
+]
+
+def generate_memory_board(rows, cols):
+    """یک لیست درهم‌ریخته از جفت ایموجی‌ها برای صفحه بازی تولید می‌کند."""
+    num_pairs = (rows * cols) // 2
+    emojis_for_game = random.sample(MEMORY_EMOJIS, num_pairs)
+    card_deck = emojis_for_game * 2
+    random.shuffle(card_deck)
+    
+    # تبدیل لیست تک‌بعدی به یک برد دوبعدی
+    board = []
+    for i in range(rows):
+        row = card_deck[i * cols : (i + 1) * cols]
+        board.append(row)
+    return board
+
+async def render_memory_board(game: dict):
+    """صفحه بازی حافظه را برای نمایش به کاربر رندر می‌کند."""
+    p1 = game['players_info'][0]
+    p2 = game['players_info'][1]
+    
+    turn_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
+    
+    text = (
+        f"🧠 **بازی حافظه**\n\n"
+        f"**امتیازها:**\n"
+        f"🔵 {p1['name']}: {p1['score']}\n"
+        f"🔴 {p2['name']}: {p2['score']}\n\n"
+        f"**نوبت {turn_player['name']}** است."
+    )
+    
+    game_id = game['game_id']
+    board_view = game['board_view']
+    keyboard = []
+    for r, row_list in enumerate(board_view):
+        row_buttons = []
+        for c, cell_content in enumerate(row_list):
+            row_buttons.append(InlineKeyboardButton(cell_content, callback_data=f"memory_flip_{game_id}_{r}_{c}"))
+        keyboard.append(row_buttons)
+        
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+    
+    if await check_ban_status(update, context): return
+    
+    data = query.data.split('_'); action = data[1]
+
+    if action == "start":
+        await query.answer()
+        
+        if chat_id not in active_games['memory']:
+            active_games['memory'][chat_id] = {}
+
+        size_str = data[2] # e.g., "4x3"
+        rows, cols = map(int, size_str.split('x'))
+
+        sent_message = await query.message.reply_text(f"در حال ساخت بازی حافظه ({size_str})...")
+        game_id = sent_message.message_id
+        
+        game = {
+            "game_id": game_id, "status": "joining",
+            "players_info": [{'id': user.id, 'name': user.first_name, 'score': 0}],
+            "board_solution": generate_memory_board(rows, cols),
+            "board_view": [['❔'] * cols for _ in range(rows)],
+            "turn": None,
+            "first_card": None, # برای ذخیره اولین کارت برگردانده شده در هر نوبت
+            "matched_pairs": 0,
+            "total_pairs": (rows * cols) // 2
+        }
+        active_games['memory'][chat_id][game_id] = game
+        
+        text = f"بازی حافظه ({size_str}) توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"memory_join_{game_id}")]]
+        await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        try:
+            await query.message.delete()
+        except Exception: pass
+        return
+
+    game_id = int(data[2])
+    if chat_id not in active_games['memory'] or game_id not in active_games['memory'][chat_id]:
+        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+        try: await query.edit_message_text("این بازی تمام شده است.")
+        except: pass
+        return
+        
+    game = active_games['memory'][chat_id][game_id]
+
+    if action == "join":
+        if not await check_join_for_alert(update, context): return
+        if any(p['id'] == user.id for p in game['players_info']):
+            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+        if len(game['players_info']) >= 2:
+            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+        
+        await query.answer()
+        game['players_info'].append({'id': user.id, 'name': user.first_name, 'score': 0})
+        game['status'] = 'playing'
+        game['turn'] = game['players_info'][0]['id']
+
+        text, reply_markup = await render_memory_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+    elif action == "flip":
+        if user.id != game.get('turn'):
+            return await query.answer("نوبت شما نیست!", show_alert=True)
+        
+        r, c = int(data[3]), int(data[4])
+        
+        if game['board_view'][r][c] != '❔':
+            return await query.answer("این کارت قبلاً انتخاب شده!", show_alert=True)
+            
+        await query.answer()
+        
+        card_value = game['board_solution'][r][c]
+        game['board_view'][r][c] = card_value
+
+        if not game['first_card']: # این اولین انتخاب در نوبت است
+            game['first_card'] = {'r': r, 'c': c, 'val': card_value}
+            text, reply_markup = await render_memory_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        
+        else: # این دومین انتخاب است
+            text, reply_markup = await render_memory_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await asyncio.sleep(1.5) # تاخیر برای دیدن کارت دوم
+            
+            first_card = game['first_card']
+            
+            # اگر جفت درست بود
+            if card_value == first_card['val']:
+                game['matched_pairs'] += 1
+                current_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
+                current_player['score'] += 1
+                await query.answer("🎉 یک جفت پیدا کردی! یک نوبت دیگر جایزه گرفتی.")
+                
+                # چک کردن پایان بازی
+                if game['matched_pairs'] == game['total_pairs']:
+                    p1 = game['players_info'][0]
+                    p2 = game['players_info'][1]
+                    
+                    if p1['score'] > p2['score']: winner = p1
+                    elif p2['score'] > p1['score']: winner = p2
+                    else: winner = None
+                    
+                    result_text = "🏆 **بازی تمام شد!** 🏆\n\n"
+                    if winner:
+                        result_text += f"برنده نهایی: **{winner['name']}**"
+                    else:
+                        result_text += "بازی **مساوی** شد!"
+                    
+                    await query.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
+                    del active_games['memory'][chat_id][game_id]
+                    return
+
+            # اگر جفت اشتباه بود
+            else:
+                game['board_view'][r][c] = '❔'
+                game['board_view'][first_card['r']][first_card['c']] = '❔'
+                # تغییر نوبت
+                current_turn_id = game['turn']
+                next_player = next(p for p in game['players_info'] if p['id'] != current_turn_id)
+                game['turn'] = next_player['id']
+            
+            game['first_card'] = None
+            text, reply_markup = await render_memory_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2051,6 +2245,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(dooz_callback, pattern=r'^dooz_'))
     application.add_handler(CallbackQueryHandler(connect4_callback, pattern=r'^connect4_'))
     application.add_handler(CallbackQueryHandler(rps_callback, pattern=r'^rps_'))
+    application.add_handler(CallbackQueryHandler(memory_callback, pattern=r'^memory_'))
 
     application.add_handler(MessageHandler(filters.Regex(r'^راهنما$') & filters.ChatType.GROUPS, text_help_trigger))
 

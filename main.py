@@ -962,28 +962,21 @@ def render_connect4_board(game: dict):
     if turn_player_id:
         turn_player = next(p for p in game['players_info'] if p['id'] == turn_player_id)
         text = f"بازی چهار در یک ردیف\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})\n\nنوبت {turn_player['name']} است."
-    else: # حالت قبل از شروع بازی
+    else:
         text = f"بازی چهار در یک ردیف\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})"
 
     game_id = game['game_id']
     board = game['board']
     
-    # دکمه‌های اصلی بازی (ستون‌ها)
-    # ⚪️ یک خانه خالی را نشان می‌دهد
     keyboard = []
-    board_rows = []
     for r in range(len(board)): # 6 ردیف
         row_buttons = []
         for c in range(len(board[0])): # 7 ستون
-            row_buttons.append(InlineKeyboardButton(board[r][c], callback_data=f"connect4_noop_{game_id}")) # دکمه‌های غیرقابل کلیک
-        board_rows.append(row_buttons)
+            # هر دکمه در صفحه بازی، شماره ستون خودش را ارسال می‌کند
+            row_buttons.append(InlineKeyboardButton(board[r][c], callback_data=f"connect4_move_{game_id}_{c}"))
+        keyboard.append(row_buttons) # هر ردیف از دکمه‌ها به کیبورد اضافه می‌شود
     
-    # دکمه‌های کنترل برای انداختن مهره در ستون‌ها
-    # از ایموجی‌های عددی برای نمایش ستون‌ها استفاده می‌کنیم
-    column_buttons = [InlineKeyboardButton(f"⬇️{c+1}", callback_data=f"connect4_move_{game_id}_{c}") for c in range(7)]
-
-    keyboard.extend(board_rows)
-    keyboard.append(column_buttons)
+    # دکمه‌های اضافی پایینی حذف شده‌اند
     
     return text, InlineKeyboardMarkup(keyboard)
 

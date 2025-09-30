@@ -1800,8 +1800,13 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "move":
         direction = data[3]
+        print(f"\n--- [DEBUG] ---")
+        print(f"1. Direction received: {direction}")
+
         piece = game['current_piece']
         test_piece = piece.copy()
+        
+        print(f"2. Current position: x={piece['x']}, y={piece['y']}")
 
         if direction == 'left': test_piece['x'] -= 1
         elif direction == 'right': test_piece['x'] += 1
@@ -1810,14 +1815,13 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             test_piece['rotation'] = (test_piece['rotation'] + 1) % num_rotations
         
         elif direction == 'drop':
+            # ... (بخش drop نیازی به دیباگ ندارد)
             await query.answer("⏬")
             while is_valid_position(game['board'], piece): piece['y'] += 1
             piece['y'] -= 1
-            
             game['board'] = lock_piece(game['board'], piece)
             game['board'], score_inc = clear_lines(game['board'])
             game['score'] += score_inc
-            
             game['current_piece'] = create_new_piece()
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
@@ -1826,17 +1830,23 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.message.reply_text(f"☠️ <b>بازی تمام شد!</b>\nامتیاز نهایی: <b>{game['score']}</b>", parse_mode=ParseMode.HTML)
                 del active_games['tetris'][chat_id][game_id]
                 return
-            
             text, reply_markup = await render_tetris_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             return
 
-        if is_valid_position(game['board'], test_piece):
+        print(f"3. Testing new position: x={test_piece['x']}, y={test_piece['y']}")
+        
+        is_valid = is_valid_position(game['board'], test_piece)
+        print(f"4. Is the new position valid? -> {is_valid}")
+
+        if is_valid:
             game['current_piece'] = test_piece
-            await query.answer() # No text for smooth movement
+            print(f"5. Position updated in game state. New x is: {game['current_piece']['x']}")
+            await query.answer()
             text, reply_markup = await render_tetris_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         else:
+            print("6. Move is invalid. No action taken.")
             await query.answer("حرکت غیرمجاز!")
 
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------

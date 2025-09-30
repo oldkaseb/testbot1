@@ -1133,39 +1133,28 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    chat_id = query.message.chat.id
+    chat_id = query.message.chat_id
     
     if await check_ban_status(update, context): return
     
     data = query.data.split('_'); action = data[1]
 
+    # بخش start و join بدون تغییر باقی می‌مانند
     if action == "start":
         await query.answer()
-        
         if chat_id not in active_games['rps']:
             active_games['rps'][chat_id] = {}
-
         sent_message = await query.message.reply_text("در حال ساخت بازی سنگ، کاغذ، قیچی...")
         game_id = sent_message.message_id
-        
         game = {
-            "game_id": game_id,
-            "status": "joining",
+            "game_id": game_id, "status": "joining",
             "players_info": [{'id': user.id, 'name': user.first_name}],
-            "choices": {} # برای ذخیره انتخاب بازیکنان
+            "choices": {}
         }
         active_games['rps'][chat_id][game_id] = game
-        
-        # ✅ پیام انتظار با ذکر نام کانال
         text = f"بازی سنگ، کاغذ، قیچی توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\nبرای پیوستن به بازی ابتدا عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"rps_join_{game_id}")]]
-        await sent_message.edit_text(
-            text, 
-            reply_markup=InlineKeyboardMarkup(keyboard), 
-            parse_mode=ParseMode.HTML
-        )
-        
-        # ✅ حذف پنل قبلی
+        await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         try:
             await query.message.delete()
         except Exception:
@@ -1182,86 +1171,77 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games['rps'][chat_id][game_id]
 
     if action == "join":
-        # ✅ چک کردن عضویت برای نفر دوم
         if not await check_join_for_alert(update, context): return
-
         if any(p['id'] == user.id for p in game['players_info']):
             return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
-        
         if len(game['players_info']) >= 2:
             return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
-        
         await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name})
         game['status'] = 'playing'
-
         p1_name = game['players_info'][0]['name']
         p2_name = game['players_info'][1]['name']
-        
         text = f"بازی شروع شد!\n\n{p1_name} ⚔️ {p2_name}\n\nلطفا انتخاب خود را انجام دهید:"
-        keyboard = [
-            [
-                InlineKeyboardButton("🪨 سنگ", callback_data=f"rps_choose_{game_id}_rock"),
-                InlineKeyboardButton("📄 کاغذ", callback_data=f"rps_choose_{game_id}_paper"),
-                InlineKeyboardButton("✂️ قیچی", callback_data=f"rps_choose_{game_id}_scissors")
-            ]
-        ]
+        keyboard = [[
+            InlineKeyboardButton("🪨 سنگ", callback_data=f"rps_choose_{game_id}_rock"),
+            InlineKeyboardButton("📄 کاغذ", callback_data=f"rps_choose_{game_id}_paper"),
+            InlineKeyboardButton("✂️ قیچی", callback_data=f"rps_choose_{game_id}_scissors")
+        ]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
+    # *** تغییر اصلی اینجاست ***
     elif action == "choose":
-        # ✅ بررسی اینکه فقط بازیکنان بتوانند کلیک کنند
         if user.id not in [p['id'] for p in game['players_info']]:
             return await query.answer("این دکمه‌ها برای شما نیست!", show_alert=True)
-
         if user.id in game['choices']:
             return await query.answer("شما قبلاً انتخاب خود را ثبت کرده‌اید!", show_alert=True)
         
         choice = data[3]
         game['choices'][user.id] = choice
-        
-        # به کاربر به صورت الرت نشان می‌دهیم چه چیزی انتخاب کرده است
         await query.answer(f"شما «{choice}» را انتخاب کردید.")
 
         p1 = game['players_info'][0]
         p2 = game['players_info'][1]
         
-        # بروزرسانی پیام بازی برای نمایش وضعیت انتخاب‌ها
-        p1_status = "✅" if p1['id'] in game['choices'] else "❓"
-        p2_status = "✅" if p2['id'] in game['choices'] else "❓"
-        text = f"بازی در جریان است...\n\n{p1['name']}: {p1_status}\n{p2['name']}: {p2_status}\n\nمنتظر انتخاب حریف..."
-        await query.edit_message_text(text)
+        # اگر هنوز منتظر بازیکن دوم هستیم
+        if len(game['choices']) < 2:
+            p1_status = "✅" if p1['id'] in game['choices'] else "❓"
+            p2_status = "✅" if p2['id'] in game['choices'] else "❓"
+            text = f"بازی در جریان است...\n\n{p1['name']}: {p1_status}\n{p2['name']}: {p2_status}\n\nمنتظر انتخاب حریف..."
+            
+            # دکمه‌ها را دوباره می‌سازیم و به پیام اضافه می‌کنیم
+            keyboard = [[
+                InlineKeyboardButton("🪨 سنگ", callback_data=f"rps_choose_{game_id}_rock"),
+                InlineKeyboardButton("📄 کاغذ", callback_data=f"rps_choose_{game_id}_paper"),
+                InlineKeyboardButton("✂️ قیچی", callback_data=f"rps_choose_{game_id}_scissors")
+            ]]
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
         # اگر هر دو بازیکن انتخاب کرده باشند
-        if len(game['choices']) == 2:
+        else:
             p1_choice = game['choices'][p1['id']]
             p2_choice = game['choices'][p2['id']]
-            
-            # دیکشنری برای نمایش ایموجی‌ها
             symbols = {'rock': '🪨', 'paper': '📄', 'scissors': '✂️'}
             
+            # پیام وضعیت نهایی را بدون دکمه ویرایش می‌کنیم
+            final_status_text = f"نتایج بازی:\n\n{p1['name']}: {symbols[p1_choice]}\n{p2['name']}: {symbols[p2_choice]}"
+            await query.edit_message_text(final_status_text)
+            
             winner = None
-            rules = {
-                'rock': 'scissors',
-                'paper': 'rock',
-                'scissors': 'paper'
-            }
+            rules = {'rock': 'scissors', 'paper': 'rock', 'scissors': 'paper'}
 
             if rules[p1_choice] == p2_choice:
                 winner = p1
             elif rules[p2_choice] == p1_choice:
                 winner = p2
             
-            result_text = f"نتایج بازی:\n\n"
-            result_text += f"{p1['name']}: {symbols[p1_choice]}\n"
-            result_text += f"{p2['name']}: {symbols[p2_choice]}\n\n"
-            
             if winner:
-                result_text += f"🏆 **برنده: {winner['name']}**"
+                result_text = f"🏆 **برنده: {winner['name']}**"
             else:
-                result_text += "🤝 **بازی مساوی شد!**"
+                result_text = "🤝 **بازی مساوی شد!**"
             
+            # نتیجه را در یک پیام جدید ریپلای می‌کنیم
             await query.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
-            # بازی را از حافظه پاک می‌کنیم
             del active_games['rps'][chat_id][game_id]
 
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------

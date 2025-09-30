@@ -194,7 +194,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -309,8 +309,9 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # شناسه کاربر به انتهای callback_data اضافه می‌شود تا پنل اختصاصی شود
         keyboard = [
-            [InlineKeyboardButton("🏆 بازی‌های کارتی و گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
+            [InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
             [InlineKeyboardButton("✍️ بازی‌های تایپی و سرعتی", callback_data=f"rsgame_cat_typing_{user_id}")],
+            [InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}")],
             [InlineKeyboardButton("🤫 بازی‌های ناشناس (ویژه ادمین)", callback_data=f"rsgame_cat_anon_{user_id}")],
             [InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")]
         ]
@@ -419,6 +420,12 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton(" حدس کلمه ", callback_data=f"hads_kalame_start_{user_id}")],
             [InlineKeyboardButton(" تایپ سرعتی ", callback_data=f"type_start_{user_id}")],
             [InlineKeyboardButton(" حدس عدد (ویژه ادمین)", callback_data=f"hads_addad_start_{user_id}")],
+            [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
+        ]
+    elif category == "single":
+        text = "👤 لطفا بازی تک‌نفره مورد نظر خود را انتخاب کنید:"
+        keyboard = [
+            [InlineKeyboardButton("🔢 2048", callback_data=f"2048_start_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
         ]
     elif category == "anon":
@@ -783,6 +790,211 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             reply_markup = await render_hokm_board(game, context)
             await query.edit_message_text(f"این دست تمام شد! برنده: {winner_display_name}\n\n-- دور جدید --\nحاکم جدید: {game['hakem_name']}\nمنتظر انتخاب حکم...", reply_markup=reply_markup)
+            
+    elif action == "noop":
+        await query.answer()
+
+# --------------------------- GAME: 2048 (جدید) ---------------------------
+
+def new_2048_board():
+    """یک صفحه خالی ۴x۴ برای بازی 2048 ایجاد می‌کند."""
+    return [[0] * 4 for _ in range(4)]
+
+def add_new_2048_tile(board):
+    """یک مهره ۲ یا ۴ به صورت تصادفی به یک خانه خالی اضافه می‌کند."""
+    empty_cells = [(r, c) for r in range(4) for c in range(4) if board[r][c] == 0]
+    if not empty_cells:
+        return board
+    r, c = random.choice(empty_cells)
+    board[r][c] = 2 if random.random() < 0.9 else 4 # 90% شانس برای ۲
+    return board
+
+def can_move_2048(board):
+    """بررسی می‌کند آیا حرکتی در صفحه امکان‌پذیر است یا خیر."""
+    for r in range(4):
+        for c in range(4):
+            if board[r][c] == 0:
+                return True # خانه خالی وجود دارد
+            # چک کردن همسایه‌های سمت راست و پایین
+            if c < 3 and board[r][c] == board[r][c+1]:
+                return True
+            if r < 3 and board[r][c] == board[r+1][c]:
+                return True
+    return False
+
+def transform_2048_board(board, direction):
+    """صفحه را بر اساس جهت حرکت می‌چرخاند تا منطق حرکت به چپ برای همه جهات قابل استفاده باشد."""
+    if direction == 'left':
+        return board
+    if direction == 'right':
+        return [row[::-1] for row in board]
+    if direction == 'up':
+        return [list(col) for col in zip(*board)] # Transpose
+    if direction == 'down':
+        new_board = [list(col) for col in zip(*board)] # Transpose
+        return [row[::-1] for row in new_board]
+
+def reverse_transform_2048_board(board, direction):
+    """صفحه چرخانده شده را به حالت اولیه برمی‌گرداند."""
+    if direction == 'left':
+        return board
+    if direction == 'right':
+        return [row[::-1] for row in board]
+    if direction == 'up':
+        return [list(col) for col in zip(*board)] # Transpose
+    if direction == 'down':
+        board = [row[::-1] for row in board]
+        return [list(col) for col in zip(*board)] # Transpose
+
+def move_2048_left(board):
+    """منطق اصلی حرکت و ادغام مهره‌ها به سمت چپ."""
+    new_board = []
+    score_increment = 0
+    moved = False
+    for row in board:
+        # ۱. فشرده‌سازی: تمام اعداد را به سمت چپ منتقل کن
+        compressed_row = [num for num in row if num != 0]
+        new_row = []
+        # ۲. ادغام: اعداد مشابه کنار هم را با هم جمع کن
+        i = 0
+        while i < len(compressed_row):
+            if i + 1 < len(compressed_row) and compressed_row[i] == compressed_row[i+1]:
+                new_value = compressed_row[i] * 2
+                new_row.append(new_value)
+                score_increment += new_value
+                i += 2
+            else:
+                new_row.append(compressed_row[i])
+                i += 1
+        # ۳. پر کردن با صفر: بقیه خانه‌ها را با صفر پر کن
+        new_row.extend([0] * (4 - len(new_row)))
+        new_board.append(new_row)
+    
+    # بررسی اینکه آیا تغییری در صفحه رخ داده است یا خیر
+    if board != new_board:
+        moved = True
+        
+    return new_board, score_increment, moved
+
+async def render_2048_board(game):
+    """صفحه بازی 2048 را برای نمایش به کاربر رندر می‌کند."""
+    game_id = game['game_id']
+    board = game['board']
+    score = game['score']
+    
+    # دیکشنری برای نمایش اعداد با ایموجی‌های مختلف برای جذابیت
+    tile_map = {0: " ", 2: "2️⃣", 4: "4️⃣", 8: "8️⃣", 16: "1️⃣6️⃣", 32: "3️⃣2️⃣", 64: "6️⃣4️⃣", 128: "1️⃣2️⃣8️⃣", 256: "2️⃣5️⃣6️⃣", 512: "5️⃣1️⃣2️⃣", 1024: "🔟2️⃣4️⃣", 2048: "🏆"}
+    
+    text = f"🔢 **بازی 2048**\n\nامتیاز: **{score}**"
+    
+    keyboard = []
+    for r in range(4):
+        row_buttons = [InlineKeyboardButton(tile_map.get(cell, str(cell)), callback_data=f"2048_noop_{game_id}") for cell in board[r]]
+        keyboard.append(row_buttons)
+        
+    control_buttons = [
+        InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
+        InlineKeyboardButton("⬆️", callback_data=f"2048_move_{game_id}_up"),
+        InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
+    ]
+    keyboard.append(control_buttons)
+    
+    control_buttons_2 = [
+        InlineKeyboardButton("⬅️", callback_data=f"2048_move_{game_id}_left"),
+        InlineKeyboardButton("⬇️", callback_data=f"2048_move_{game_id}_down"),
+        InlineKeyboardButton("➡️", callback_data=f"2048_move_{game_id}_right"),
+    ]
+    keyboard.append(control_buttons_2)
+
+    close_button = [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"2048_close_{game_id}")]
+    keyboard.append(close_button)
+    
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+
+    if await check_ban_status(update, context): return
+    
+    data = query.data.split('_'); action = data[1]
+
+    if action == "start":
+        await query.answer()
+
+        if chat_id not in active_games['2048']:
+            active_games['2048'][chat_id] = {}
+        
+        sent_message = await query.message.reply_text("در حال ساخت بازی 2048...")
+        game_id = sent_message.message_id
+        
+        # شروع بازی با دو مهره تصادفی
+        initial_board = new_2048_board()
+        add_new_2048_tile(initial_board)
+        add_new_2048_tile(initial_board)
+        
+        game = {
+            "game_id": game_id,
+            "board": initial_board,
+            "score": 0
+        }
+        active_games['2048'][chat_id][game_id] = game
+        
+        text, reply_markup = await render_2048_board(game)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        
+        try:
+            await query.message.delete()
+        except Exception: pass
+        return
+
+    game_id = int(data[2])
+    # بستن بازی
+    if action == "close":
+        await query.answer()
+        del active_games['2048'][chat_id][game_id]
+        if not active_games['2048'][chat_id]:
+            del active_games['2048'][chat_id]
+        await query.edit_message_text("بازی 2048 بسته شد.")
+        return
+
+    if chat_id not in active_games['2048'] or game_id not in active_games['2048'][chat_id]:
+        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+        try: await query.edit_message_text("این بازی تمام شده است.")
+        except: pass
+        return
+        
+    game = active_games['2048'][chat_id][game_id]
+
+    if action == "move":
+        direction = data[3]
+        
+        # ۱. تبدیل صفحه برای استفاده از منطق حرکت به چپ
+        transformed = transform_2048_board(game['board'], direction)
+        # ۲. انجام حرکت و ادغام
+        moved_board, score_inc, moved = move_2048_left(transformed)
+        # ۳. برگرداندن صفحه به حالت اولیه
+        final_board = reverse_transform_2048_board(moved_board, direction)
+
+        if moved:
+            game['board'] = add_new_2048_tile(final_board)
+            game['score'] += score_inc
+            await query.answer()
+        else:
+            await query.answer("حرکت نامعتبر!")
+            return
+
+        text, reply_markup = await render_2048_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        
+        # چک کردن شرایط پایان بازی
+        if any(2048 in row for row in game['board']):
+            await query.message.reply_text(f"🏆 **تبریک!** شما برنده شدید! 🏆\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
+            del active_games['2048'][chat_id][game_id]
+        elif not can_move_2048(game['board']):
+            await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
+            del active_games['2048'][chat_id][game_id]
             
     elif action == "noop":
         await query.answer()
@@ -2246,6 +2458,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(connect4_callback, pattern=r'^connect4_'))
     application.add_handler(CallbackQueryHandler(rps_callback, pattern=r'^rps_'))
     application.add_handler(CallbackQueryHandler(memory_callback, pattern=r'^memory_'))
+    application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
 
     application.add_handler(MessageHandler(filters.Regex(r'^راهنما$') & filters.ChatType.GROUPS, text_help_trigger))
 

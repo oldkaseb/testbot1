@@ -1687,14 +1687,36 @@ def get_piece_matrix(piece):
     return PIECE_SHAPES[piece['shape_name']][piece['rotation']]
 
 def is_valid_position(board, piece):
-    """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر (برخورد ندارد)."""
+    """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر (با دیباگ)."""
     piece_matrix = get_piece_matrix(piece)
     for r, row in enumerate(piece_matrix):
         for c, cell in enumerate(row):
             if cell:
                 board_r, board_c = piece['y'] + r, piece['x'] + c
-                if not (0 <= board_c < BOARD_WIDTH and 0 <= board_r < BOARD_HEIGHT and board[board_r][board_c] == EMPTY_CELL):
+                
+                # ---- بخش دیباگ ----
+                cond1 = (0 <= board_c < BOARD_WIDTH)
+                cond2 = (0 <= board_r < BOARD_HEIGHT)
+                cond3 = False # پیش‌فرض
+                if cond1 and cond2:
+                    cond3 = (board[board_r][board_c] == EMPTY_CELL)
+                
+                # اگر یکی از شرط‌ها غلط بود، دلیلش را چاپ کن
+                if not (cond1 and cond2 and cond3):
+                    print("\n--- INVALID MOVE DETECTED ---")
+                    print(f"Piece: {piece['shape_name']}, Pos: (x={piece['x']}, y={piece['y']})")
+                    print(f"Checking block at: (r={board_r}, c={board_c})")
+                    print(f"Is inside X bounds? -> {cond1}")
+                    print(f"Is inside Y bounds? -> {cond2}")
+                    if not (cond1 and cond2):
+                        print("Reason: Out of bounds!")
+                    else:
+                        print(f"Is board cell empty? -> {cond3}")
+                        print(f"Reason: Collision with another piece!")
+                    print("---------------------------\n")
                     return False
+                # ---- پایان بخش دیباگ ----
+
     return True
 
 def lock_piece(board, piece):

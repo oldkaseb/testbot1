@@ -1741,7 +1741,7 @@ def clear_lines(board):
     return new_board, score_map.get(len(lines_to_clear), 0)
 
 async def render_tetris_board(game):
-    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند. (نسخه Markdown)"""
+    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند. (نسخه نهایی HTML)"""
     game_id = game['game_id']
     board = [row[:] for row in game['board']]
     current_piece = game['current_piece']
@@ -1758,8 +1758,8 @@ async def render_tetris_board(game):
     
     board_str = "\n".join("".join(row) for row in board)
     
-    # استفاده از بک‌تیک برای نمایش مرتب در حالت Markdown
-    text = f"🧱 **تتریس**\nامتیاز: **{score}**\n\n`{board_str}`"
+    # استفاده از تگ <pre><code> برای نمایش مرتب
+    text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
     
     keyboard = [
         [
@@ -1799,7 +1799,7 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
-        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         
         try: await query.message.delete()
         except Exception: pass
@@ -1847,19 +1847,19 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
                 text, _ = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
-                await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML)
+                await query.message.reply_text(f"☠️ <b>بازی تمام شد!</b>\nامتیاز نهایی: <b>{game['score']}</b>", parse_mode=ParseMode.HTML)
                 del active_games['tetris'][chat_id][game_id]
                 return
             
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             return
 
         if is_valid_position(game['board'], piece):
             await query.answer()
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         else:
             piece['x'], piece['rotation'] = original_x, original_rotation
             await query.answer("حرکت غیرمجاز!")

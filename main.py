@@ -426,13 +426,30 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 import asyncio
 
 async def rsgame_close_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پنل بازی را می‌بندد."""
+    """پنل بازی را می‌بندد و مالکیت آن را بررسی می‌کند."""
     query = update.callback_query
+    
+    # -- بخش بررسی مالکیت پنل --
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه منقضی شده است.", show_alert=True)
+        return
+
+    clicker_user_id = query.from_user.id
+
+    if clicker_user_id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+    # -- پایان بخش بررسی --
+
     await query.answer()
     try:
+        # ویرایش پیام به "پنل بسته شد"
         await query.edit_message_text("پنل بسته شد.")
     except Exception:
-        # اگر پیام خیلی قدیمی باشد یا مشکلی در ویرایش پیش بیاید، آن را حذف می‌کنیم
+        # اگر ویرایش ممکن نبود (مثلا پیام قدیمی بود)، آن را حذف می‌کند
         try:
             await query.delete_message()
         except Exception:
@@ -1743,7 +1760,7 @@ def main() -> None:
 
     application.add_handler(CallbackQueryHandler(rsgame_check_join_callback, pattern=r'^rsgame_check_join$'))
 
-    application.add_handler(CallbackQueryHandler(rsgame_close_callback, pattern=r'^rsgame_close$'))
+    application.add_handler(CallbackQueryHandler(rsgame_close_callback, pattern=r'^rsgame_close_'))
     # پنل اصلی
     application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))
     application.add_handler(CallbackQueryHandler(rsgame_pv_callback, pattern=r'^rsgame_cat_main_pv$'))

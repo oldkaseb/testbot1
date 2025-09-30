@@ -158,45 +158,18 @@ TYPING_SENTENCES = [
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
 BOARD_WIDTH, BOARD_HEIGHT = 10, 20
-# توجه: بین دو علامت کوتیشن یک کاراکتر نامرئی وجود دارد. کافیست آن را کپی کنید.
-EMPTY_CELL = "​"
+EMPTY_CELL = "​"  # کاراکتر نامرئی Zero-Width Space
 FILLED_CELL = "⬛️"
 
 # تعریف شکل‌ها و چرخش‌های هر قطعه
 PIECE_SHAPES = {
-    'I': [
-        [[1, 1, 1, 1]],
-        [[1], [1], [1], [1]]
-    ],
-    'O': [
-        [[1, 1], [1, 1]]
-    ],
-    'T': [
-        [[0, 1, 0], [1, 1, 1]],
-        [[1, 0], [1, 1], [1, 0]],
-        [[1, 1, 1], [0, 1, 0]],
-        [[0, 1], [1, 1], [0, 1]]
-    ],
-    'S': [
-        [[0, 1, 1], [1, 1, 0]],
-        [[1, 0], [1, 1], [0, 1]]
-    ],
-    'Z': [
-        [[1, 1, 0], [0, 1, 1]],
-        [[0, 1], [1, 1], [1, 0]]
-    ],
-    'J': [
-        [[1, 0, 0], [1, 1, 1]],
-        [[1, 1], [1, 0], [1, 0]],
-        [[1, 1, 1], [0, 0, 1]],
-        [[0, 1], [0, 1], [1, 1]]
-    ],
-    'L': [
-        [[0, 0, 1], [1, 1, 1]],
-        [[1, 0], [1, 0], [1, 1]],
-        [[1, 1, 1], [1, 0, 0]],
-        [[1, 1], [0, 1], [0, 1]]
-    ]
+    'I': [[[1, 1, 1, 1]], [[1], [1], [1], [1]]],
+    'O': [[[1, 1], [1, 1]]],
+    'T': [[[0, 1, 0], [1, 1, 1]], [[1, 0], [1, 1], [1, 0]], [[1, 1, 1], [0, 1, 0]], [[0, 1], [1, 1], [0, 1]]],
+    'S': [[[0, 1, 1], [1, 1, 0]], [[1, 0], [1, 1], [0, 1]]],
+    'Z': [[[1, 1, 0], [0, 1, 1]], [[0, 1], [1, 1], [1, 0]]],
+    'J': [[[1, 0, 0], [1, 1, 1]], [[1, 1], [1, 0], [1, 0]], [[1, 1, 1], [0, 0, 1]], [[0, 1], [0, 1], [1, 1]]],
+    'L': [[[0, 0, 1], [1, 1, 1]], [[1, 0], [1, 0], [1, 1]], [[1, 1, 1], [1, 0, 0]], [[1, 1], [0, 1], [0, 1]]]
 }
 
 PIECE_COLORS = {
@@ -1705,15 +1678,13 @@ def create_new_piece():
     return {
         'shape_name': shape_name,
         'rotation': 0,
-        'x': BOARD_WIDTH // 2 - 1,
+        'x': BOARD_WIDTH // 2 - 2, # موقعیت شروع بهتر برای قطعات
         'y': 0
     }
 
 def get_piece_matrix(piece):
     """ماتریکس شکل فعلی قطعه را بر اساس چرخش آن برمی‌گرداند."""
-    shape_name = piece['shape_name']
-    rotation = piece['rotation']
-    return PIECE_SHAPES[shape_name][rotation]
+    return PIECE_SHAPES[piece['shape_name']][piece['rotation']]
 
 def is_valid_position(board, piece):
     """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر (برخورد ندارد)."""
@@ -1741,14 +1712,10 @@ def clear_lines(board):
     lines_to_clear = [r for r, row in enumerate(board) if all(cell != EMPTY_CELL for cell in row)]
     if not lines_to_clear:
         return board, 0
-
-    # حذف خطوط کامل شده
     new_board = [row for r, row in enumerate(board) if r not in lines_to_clear]
-    # اضافه کردن خطوط خالی به بالای صفحه
     for _ in range(len(lines_to_clear)):
         new_board.insert(0, [EMPTY_CELL] * BOARD_WIDTH)
-        
-    score_map = {1: 100, 2: 300, 3: 500, 4: 800} # امتیاز تتریس
+    score_map = {1: 100, 2: 300, 3: 500, 4: 800}
     return new_board, score_map.get(len(lines_to_clear), 0)
 
 async def render_tetris_board(game):
@@ -1757,20 +1724,18 @@ async def render_tetris_board(game):
     board = [row[:] for row in game['board']]
     current_piece = game['current_piece']
     score = game['score']
-
     if current_piece:
         piece_matrix = get_piece_matrix(current_piece)
         color = PIECE_COLORS[current_piece['shape_name']]
         for r, row in enumerate(piece_matrix):
             for c, cell in enumerate(row):
                 if cell:
-                    board[current_piece['y'] + r][current_piece['x'] + c] = color
+                    # برای جلوگیری از خطا اگر قطعه خارج از محدوده باشد
+                    if 0 <= current_piece['y'] + r < BOARD_HEIGHT and 0 <= current_piece['x'] + c < BOARD_WIDTH:
+                        board[current_piece['y'] + r][current_piece['x'] + c] = color
     
     board_str = "\n".join("".join(row) for row in board)
-    
-    # استفاده از تگ <pre><code> برای نمایش مرتب
     text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
-    
     keyboard = [
         [
             InlineKeyboardButton("⬅️", callback_data=f"tetris_move_{game_id}_left"),
@@ -1780,13 +1745,14 @@ async def render_tetris_board(game):
         [InlineKeyboardButton("⏬ سقوط", callback_data=f"tetris_move_{game_id}_drop")],
         [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"tetris_close_{game_id}")]
     ]
-    
     return text, InlineKeyboardMarkup(keyboard)
+
+# --- تابع اصلی بازی تتریس ---
 
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    user = query.from_user # <-- آیدی کاربر کلیک‌کننده از اینجا می‌آید
-    chat_id = query.message.chat.id
+    user = query.from_user
+    chat_id = query.message.chat_id
     if await check_ban_status(update, context): return
     
     data = query.data.split('_'); action = data[1]
@@ -1800,17 +1766,14 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         game_id = sent_message.message_id
         
         game = {
-            "game_id": game_id,
-            "player_id": user.id, # <-- نکته ۱: آیدی بازیکن در اینجا ذخیره می‌شود
+            "game_id": game_id, "player_id": user.id,
             "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
-            "current_piece": create_new_piece(),
-            "score": 0,
-            "status": "playing"
+            "current_piece": create_new_piece(), "score": 0, "status": "playing"
         }
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
-        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         
         try: await query.message.delete()
         except Exception: pass
@@ -1824,7 +1787,6 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     game = active_games['tetris'][chat_id][game_id]
 
-    # <-- نکته ۲: بررسی امنیتی در تمام اکشن‌ها
     if user.id != game.get('player_id'):
         return await query.answer("این بازی برای شما نیست!", show_alert=True)
 
@@ -1837,7 +1799,6 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if game['status'] != 'playing': return await query.answer()
 
     if action == "move":
-        await query.answer()
         direction = data[3]
         piece = game['current_piece']
         test_piece = piece.copy()
@@ -1845,11 +1806,11 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if direction == 'left': test_piece['x'] -= 1
         elif direction == 'right': test_piece['x'] += 1
         elif direction == 'rotate':
-            shape_name = test_piece['shape_name']
-            num_rotations = len(PIECE_SHAPES[shape_name])
+            num_rotations = len(PIECE_SHAPES[test_piece['shape_name']])
             test_piece['rotation'] = (test_piece['rotation'] + 1) % num_rotations
         
         elif direction == 'drop':
+            await query.answer("⏬")
             while is_valid_position(game['board'], piece): piece['y'] += 1
             piece['y'] -= 1
             
@@ -1861,19 +1822,22 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
                 text, _ = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML) # تغییر به HTML
-                await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML)
+                await query.message.reply_text(f"☠️ <b>بازی تمام شد!</b>\nامتیاز نهایی: <b>{game['score']}</b>", parse_mode=ParseMode.HTML)
                 del active_games['tetris'][chat_id][game_id]
                 return
             
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             return
 
         if is_valid_position(game['board'], test_piece):
             game['current_piece'] = test_piece
+            await query.answer() # No text for smooth movement
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML) # تغییر به HTML
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        else:
+            await query.answer("حرکت غیرمجاز!")
 
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

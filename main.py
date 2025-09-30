@@ -157,7 +157,7 @@ TYPING_SENTENCES = [
 ]
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
-BOARD_WIDTH, BOARD_HEIGHT = 12, 20
+BOARD_WIDTH, BOARD_HEIGHT = 14, 18
 EMPTY_CELL = "▪️"  # کاراکتر نامرئی Zero-Width Space
 FILLED_CELL = "⬛️"
 
@@ -1768,6 +1768,7 @@ async def render_tetris_board(game):
             InlineKeyboardButton("➡️", callback_data=f"tetris_move_{game_id}_right"),
         ],
         [InlineKeyboardButton("⏬ سقوط", callback_data=f"tetris_move_{game_id}_drop")],
+        [InlineKeyboardButton("​", callback_data=f"tetris_noop_{game_id}")],
         [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"tetris_close_{game_id}")]
     ]
     

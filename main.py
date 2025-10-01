@@ -157,8 +157,8 @@ TYPING_SENTENCES = [
 ]
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
-BOARD_WIDTH, BOARD_HEIGHT = 16, 18
-EMPTY_CELL = "↓"  # کاراکتر نامرئی Zero-Width Space
+BOARD_WIDTH, BOARD_HEIGHT = 18, 18
+EMPTY_CELL = "🔻"  # کاراکتر نامرئی Zero-Width Space
 FILLED_CELL = "⬛️"
 
 # تعریف شکل‌ها و چرخش‌های هر قطعه

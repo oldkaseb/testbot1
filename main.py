@@ -476,8 +476,22 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 # ... (کد بازی حکم در اینجا قرار می‌گیرد - بدون تغییر)
 
 async def rsgame_close_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """پنل بازی را می‌بندد."""
+    """پنل بازی را می‌بندد و مالکیت آن را چک می‌کند."""
     query = update.callback_query
+    
+    # --- بخش امنیتی جدید ---
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+        return
+
+    if query.from_user.id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+    # --- پایان بخش امنیتی ---
+
     await query.answer()
     try:
         await query.edit_message_text("پنل بسته شد.")
@@ -604,6 +618,20 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         mode = data[2]
         max_players = 4 if mode == '4p' else 2
@@ -948,6 +976,20 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
 
         if chat_id not in active_games['2048']:
@@ -1091,6 +1133,20 @@ async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         
         if chat_id not in active_games['dooz']:
@@ -1269,6 +1325,20 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         
         if chat_id not in active_games['connect4']:
@@ -1394,6 +1464,20 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # بخش start و join بدون تغییر باقی می‌مانند
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         if chat_id not in active_games['rps']:
             active_games['rps'][chat_id] = {}
@@ -1556,6 +1640,20 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         
         if chat_id not in active_games['memory']:
@@ -1792,6 +1890,20 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         if chat_id not in active_games['tetris']:
             active_games['tetris'][chat_id] = {}
@@ -1953,6 +2065,20 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         if chat_id not in active_games['samegame']:
             active_games['samegame'][chat_id] = {}
@@ -2116,6 +2242,20 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_'); action = data[1]
 
     if action == "start":
+        # --- بلوک امنیتی برای شروع بازی ---
+            try:
+                # آیدی صاحب پنل از انتهای callback_data خوانده می‌شود
+                target_user_id = int(data[-1])
+            except (ValueError, IndexError):
+                # در صورت وجود خطا در callback_data، بی‌صدا خارج شو
+                await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+                return
+
+            # چک می‌کند که آیا کلیک‌کننده همان صاحب پنل است یا خیر
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+            # --- پایان بلوک امنیتی ---
         await query.answer()
         if chat_id not in active_games['spuzzle']:
             active_games['spuzzle'] = {chat_id: {}}

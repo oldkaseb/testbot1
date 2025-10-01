@@ -663,7 +663,8 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
+
     if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1009,7 +1010,7 @@ if action == "start":
         except Exception: pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
     # بستن بازی
     if action == "close":
         await query.answer()
@@ -1167,7 +1168,8 @@ if action == "start":
 
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
+
     if chat_id not in active_games['dooz'] or game_id not in active_games['dooz'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1354,7 +1356,8 @@ if action == "start":
             pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
+    
     if chat_id not in active_games['connect4'] or game_id not in active_games['connect4'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1474,7 +1477,8 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
+    
     if chat_id not in active_games['rps'] or game_id not in active_games['rps'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1657,7 +1661,8 @@ if action == "start":
         except Exception: pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
+
     if chat_id not in active_games['memory'] or game_id not in active_games['memory'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1892,7 +1897,7 @@ if action == "start":
         except Exception: pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
     
     if chat_id not in active_games['tetris'] or game_id not in active_games['tetris'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
@@ -2062,7 +2067,7 @@ if action == "start":
         except Exception: pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
     
     if chat_id not in active_games['samegame'] or game_id not in active_games['samegame'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
@@ -2236,7 +2241,7 @@ if action == "start":
         except Exception: pass
         return
 
-    game_id = int(data[2])
+game_id = int(data[2])
     
     if chat_id not in active_games['spuzzle'] or game_id not in active_games['spuzzle'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)

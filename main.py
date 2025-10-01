@@ -28,6 +28,7 @@ from PIL import Image, ImageDraw, ImageFont
 import arabic_reshaper
 from bidi.algorithm import get_display
 import time
+import asyncio
 
 # --- پیکربندی اصلی ---
 OWNER_IDS = [7662192190, 6041119040] # آیدی‌های عددی ادمین‌های اصلی ربات
@@ -476,7 +477,6 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
 # --------------------------- GAME: HOKM (بدون تغییر در منطق اصلی) ---------------------------
 # توابع کمکی حکم (card_to_persian, create_deck, ...) همانند قبل باقی می‌مانند
 # ... (کد بازی حکم در اینجا قرار می‌گیرد - بدون تغییر)
-import asyncio
 
 async def rsgame_close_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """پنل بازی را می‌بندد."""
@@ -2921,8 +2921,6 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await message.edit_text(f"راینو گیم آنلاین است!\n\n⚡️پاسخگویی: {latency_s:.4f} ثانیه")
 
 # =================================================================
-# ======================== MAIN FUNCTION ==========================
-# =================================================================def main() -> None:
 def main() -> None:
     """Start the bot."""
     setup_database()
@@ -2933,7 +2931,7 @@ def main() -> None:
 
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # --- Conversation Handlers (این بخش صحیح است و بدون تغییر باقی می‌ماند) ---
+    # --- Conversation Handlers ---
     gharch_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(gharch_start_callback, pattern=r'^gharch_start_')],
         states={
@@ -2962,7 +2960,7 @@ def main() -> None:
         fallbacks=[CommandHandler('cancel', cancel_game_conversation)],
         per_user=True, per_chat=False
     )
-
+    
     application.add_handler(gharch_conv)
     application.add_handler(guess_number_conv)
     application.add_handler(eteraf_conv)
@@ -3008,7 +3006,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
-    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_cat_'))
+    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_'))
 
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند

@@ -218,7 +218,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}, 'samegame': {}, 'spuzzle': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}, 'samegame': {}, 'spuzzle': {}, 'doz4p': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -419,7 +419,8 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         keyboard = [
             [InlineKeyboardButton(" حکم ۲ نفره ", callback_data=f"hokm_start_2p_{user_id}")],
             [InlineKeyboardButton(" حکم ۴ نفره ", callback_data=f"hokm_start_4p_{user_id}")],
-            [InlineKeyboardButton(" دوز (دو نفره) ", callback_data=f"dooz_start_2p_{user_id}")],
+            [InlineKeyboardButton("💠 دوز دو نفره ", callback_data=f"dooz_start_2p_{user_id}")],
+            [InlineKeyboardButton("💠 دوز چهار نفره", callback_data=f"doz4p_start_{user_id}")],
             [InlineKeyboardButton(" چهار در یک ردیف ", callback_data=f"connect4_start_{user_id}")],
             [InlineKeyboardButton(" سنگ کاغذ قیچی ✂️", callback_data=f"rps_start_{user_id}")],
             [InlineKeyboardButton("🧠 بازی حافظه", callback_data=f"rsgame_cat_memory_{user_id}")],
@@ -2195,6 +2196,144 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer()
 
 # ========================= SLIDING PUZZLE CODE (END) - v2 ==========================
+# ======================== 4-PLAYER DOZ CODE (START) =========================
+
+# --- ثابت‌های دوز چهار نفره ---
+DOZ4P_SIZE = 10
+DOZ4P_SYMBOLS = ["🔴", "🔵", "🟢", "🟡"]
+
+def check_doz4p_winner(board, symbol):
+    """بررسی می‌کند که آیا بازیکنی با نماد 'symbol' برنده شده است (۴ مهره در یک ردیف)."""
+    # بررسی افقی
+    for r in range(DOZ4P_SIZE):
+        for c in range(DOZ4P_SIZE - 3):
+            if all(board[r][c+i] == symbol for i in range(4)):
+                return True
+    # بررسی عمودی
+    for r in range(DOZ4P_SIZE - 3):
+        for c in range(DOZ4P_SIZE):
+            if all(board[r+i][c] == symbol for i in range(4)):
+                return True
+    # بررسی مورب (پایین به بالا)
+    for r in range(3, DOZ4P_SIZE):
+        for c in range(DOZ4P_SIZE - 3):
+            if all(board[r-i][c+i] == symbol for i in range(4)):
+                return True
+    # بررسی مورب (بالا به پایین)
+    for r in range(DOZ4P_SIZE - 3):
+        for c in range(DOZ4P_SIZE - 3):
+            if all(board[r+i][c+i] == symbol for i in range(4)):
+                return True
+    return False
+
+async def render_doz4p_board(game):
+    """صفحه بازی دوز چهار نفره را رندر می‌کند."""
+    game_id = game['game_id']
+    board = game['board']
+    turn_player = game['players_info'][game['turn_index']]
+    
+    player_list = "\n".join(f"{p['symbol']} {p['name']}" for p in game['players_info'])
+    text = f"💠 **دوز چهار نفره**\n\n{player_list}\n\nنوبت: {turn_player['symbol']} {turn_player['name']}"
+    
+    keyboard = []
+    for r in range(DOZ4P_SIZE):
+        row_buttons = [InlineKeyboardButton(board[r][c], callback_data=f"doz4p_move_{game_id}_{r}_{c}") for c in range(DOZ4P_SIZE)]
+        keyboard.append(row_buttons)
+        
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+    if await check_ban_status(update, context): return
+    
+    data = query.data.split('_'); action = data[1]
+
+    if action == "start":
+        await query.answer()
+        if chat_id not in active_games['doz4p']:
+            active_games['doz4p'] = {chat_id: {}}
+        
+        sent_message = await query.message.reply_text("در حال ساخت بازی دوز چهار نفره...")
+        game_id = sent_message.message_id
+        
+        game = {
+            "game_id": game_id, "status": "joining",
+            "players_info": [{'id': user.id, 'name': user.first_name, 'symbol': DOZ4P_SYMBOLS[0]}],
+            "board": [['▪️'] * DOZ4P_SIZE for _ in range(DOZ4P_SIZE)],
+            "turn_index": 0
+        }
+        active_games['doz4p'][chat_id][game_id] = game
+        
+        text = f"بازی دوز چهار نفره توسط {user.mention_html()} ساخته شد! (1/4)\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
+        await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        try: await query.message.delete()
+        except Exception: pass
+        return
+
+    game_id = int(data[2])
+    if chat_id not in active_games['doz4p'] or game_id not in active_games['doz4p'][chat_id]:
+        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+        return
+        
+    game = active_games['doz4p'][chat_id][game_id]
+
+    if action == "join":
+        if not await check_join_for_alert(update, context): return
+        if any(p['id'] == user.id for p in game['players_info']):
+            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+        
+        num_players = len(game['players_info'])
+        if num_players >= 4:
+            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+        
+        await query.answer()
+        game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': DOZ4P_SYMBOLS[num_players]})
+        
+        if num_players + 1 < 4:
+            text = f"بازی دوز چهار نفره ({num_players + 1}/4)\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+            keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        else:
+            game['status'] = 'playing'
+            text, reply_markup = await render_doz4p_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+    elif action == "move":
+        turn_player = game['players_info'][game['turn_index']]
+        if user.id != turn_player['id']:
+            return await query.answer("نوبت شما نیست!", show_alert=True)
+        
+        r, c = int(data[3]), int(data[4])
+        if game['board'][r][c] != '▪️':
+            return await query.answer("این خانه پر است!", show_alert=True)
+        
+        await query.answer()
+        symbol = turn_player['symbol']
+        game['board'][r][c] = symbol
+
+        if check_doz4p_winner(game['board'], symbol):
+            text, reply_markup = await render_doz4p_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.message.reply_text(f"🏆 **بازی تمام شد!** 🏆\n\nبرنده: {turn_player['symbol']} {turn_player['name']}", parse_mode=ParseMode.MARKDOWN)
+            del active_games['doz4p'][chat_id][game_id]
+            return
+
+        if all(cell != '▪️' for row in game['board'] for cell in row):
+            text, reply_markup = await render_doz4p_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.message.reply_text("🤝 **بازی مساوی شد!**", parse_mode=ParseMode.MARKDOWN)
+            del active_games['doz4p'][chat_id][game_id]
+            return
+
+        game['turn_index'] = (game['turn_index'] + 1) % 4
+        text, reply_markup = await render_doz4p_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+# ======================== 4-PLAYER DOZ CODE (END) =========================
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3007,6 +3146,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
     application.add_handler(CallbackQueryHandler(spuzzle_callback, pattern=r'^spuzzle_'))
+    application.add_handler(CallbackQueryHandler(doz4p_callback, pattern=r'^doz4p_'))
 
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند

@@ -180,10 +180,6 @@ PIECE_COLORS = {
 SAMEGAME_WIDTH, SAMEGAME_HEIGHT = 10, 10
 SAMEGAME_COLORS = ["🟥", "🟩", "🟦", "🟨", "🟪"]
 
-
-# --- ثابت‌های پازل کشویی ---
-PUZZLE_SIZE = 4
-
 # --- تنظیمات لاگ ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -222,7 +218,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}, 'samegame': {}, 'sliding_puzzle': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}, 'samegame': {}, 'spuzzle': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -454,7 +450,7 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         text = "👤 لطفا بازی تک‌نفره مورد نظر خود را انتخاب کنید:"
         keyboard = [
             [InlineKeyboardButton("2️⃣0️⃣4️⃣8️⃣", callback_data=f"2048_start_{user_id}")],
-            [InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"sliding_puzzle_cat_start_{user_id}")],
+            [InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"spuzzle_start_{user_id}")],
             [InlineKeyboardButton("✨ بازی جفت‌ها", callback_data=f"samegame_start_{user_id}")],
             [InlineKeyboardButton("🧱 تتریس", callback_data=f"tetris_start_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
@@ -2036,45 +2032,55 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
 # ============================ SAMEGAME CODE (END) ============================
-# ======================== SLIDING PUZZLE CODE (START) =========================
-def create_solvable_puzzle():
+# ======================== SLIDING PUZZLE CODE (START) - v2 =========================
+
+# --- ثابت‌های پازل کشویی ---
+SPUZZLE_SIZE = 4
+
+def create_solvable_spuzzle():
     """یک پازل درهم‌ریخته اما قابل حل ایجاد می‌کند."""
-    board = list(range(1, PUZZLE_SIZE * PUZZLE_SIZE)) + [0]
-    board = [board[i:i+PUZZLE_SIZE] for i in range(0, len(board), PUZZLE_SIZE)]
+    board = list(range(1, SPUZZLE_SIZE * SPUZZLE_SIZE)) + [0]
     
     # با انجام تعداد زیادی حرکت تصادفی از روی حالت حل‌شده، به یک چینش قابل حل می‌رسیم
-    empty_r, empty_c = PUZZLE_SIZE - 1, PUZZLE_SIZE - 1
-    for _ in range(200): # تعداد حرکات برای درهم‌ریختن
+    flat_board = list(board)
+    empty_pos = len(flat_board) - 1
+    
+    for _ in range(300): # تعداد حرکات برای درهم‌ریختن
         moves = []
-        if empty_r > 0: moves.append('down')
-        if empty_r < PUZZLE_SIZE - 1: moves.append('up')
-        if empty_c > 0: moves.append('right')
-        if empty_c < PUZZLE_SIZE - 1: moves.append('left')
+        # حرکت به بالا (کاشی پایینی به جای خالی می‌آید)
+        if empty_pos < SPUZZLE_SIZE * (SPUZZLE_SIZE - 1): moves.append('up')
+        # حرکت به پایین
+        if empty_pos >= SPUZZLE_SIZE: moves.append('down')
+        # حرکت به چپ
+        if empty_pos % SPUZZLE_SIZE < SPUZZLE_SIZE - 1: moves.append('left')
+        # حرکت به راست
+        if empty_pos % SPUZZLE_SIZE > 0: moves.append('right')
         
         move = random.choice(moves)
         
-        if move == 'down':
-            board[empty_r][empty_c], board[empty_r - 1][empty_c] = board[empty_r - 1][empty_c], board[empty_r][empty_c]
-            empty_r -= 1
-        elif move == 'up':
-            board[empty_r][empty_c], board[empty_r + 1][empty_c] = board[empty_r + 1][empty_c], board[empty_r][empty_c]
-            empty_r += 1
-        elif move == 'right':
-            board[empty_r][empty_c], board[empty_r][empty_c - 1] = board[empty_r][empty_c - 1], board[empty_r][empty_c]
-            empty_c -= 1
+        if move == 'up':
+            swap_with = empty_pos + SPUZZLE_SIZE
+        elif move == 'down':
+            swap_with = empty_pos - SPUZZLE_SIZE
         elif move == 'left':
-            board[empty_r][empty_c], board[empty_r][empty_c + 1] = board[empty_r][empty_c + 1], board[empty_r][empty_c]
-            empty_c += 1
+            swap_with = empty_pos + 1
+        else: # right
+            swap_with = empty_pos - 1
             
-    return board
+        flat_board[empty_pos], flat_board[swap_with] = flat_board[swap_with], flat_board[empty_pos]
+        empty_pos = swap_with
 
-def is_puzzle_solved(board):
+    # تبدیل لیست فلت به برد ۲ بعدی
+    return [flat_board[i:i+SPUZZLE_SIZE] for i in range(0, len(flat_board), SPUZZLE_SIZE)]
+
+
+def is_spuzzle_solved(board):
     """بررسی می‌کند که آیا پازل حل شده است یا خیر."""
-    solved_board = list(range(1, PUZZLE_SIZE * PUZZLE_SIZE)) + [0]
+    solved_board = list(range(1, SPUZZLE_SIZE * SPUZZLE_SIZE)) + [0]
     current_flat_board = [cell for row in board for cell in row]
     return solved_board == current_flat_board
 
-async def render_sliding_puzzle(game):
+async def render_spuzzle(game):
     """صفحه پازل کشویی را رندر می‌کند."""
     game_id = game['game_id']
     board = game['board']
@@ -2082,27 +2088,25 @@ async def render_sliding_puzzle(game):
     text = "🔢 **پازل کشویی**\n\nاعداد را مرتب کنید:"
     
     keyboard = []
-    for r in range(PUZZLE_SIZE):
+    for r in range(SPUZZLE_SIZE):
         row_buttons = []
-        for c in range(PUZZLE_SIZE):
+        for c in range(SPUZZLE_SIZE):
             cell = board[r][c]
-            # برای خانه خالی، یک دکمه با متن خالی می‌گذاریم
             text_cell = str(cell) if cell != 0 else " "
-            row_buttons.append(InlineKeyboardButton(text_cell, callback_data=f"sliding_puzzle_noop_{game_id}"))
+            row_buttons.append(InlineKeyboardButton(text_cell, callback_data=f"spuzzle_noop_{game_id}"))
         keyboard.append(row_buttons)
         
-    # اضافه کردن دکمه‌های کنترلی به شکل لوزی
-    keyboard.append([InlineKeyboardButton("⬆️", callback_data=f"sliding_puzzle_move_{game_id}_up")])
+    keyboard.append([InlineKeyboardButton("⬆️", callback_data=f"spuzzle_move_{game_id}_up")])
     keyboard.append([
-        InlineKeyboardButton("⬅️", callback_data=f"sliding_puzzle_move_{game_id}_left"),
-        InlineKeyboardButton("➡️", callback_data=f"sliding_puzzle_move_{game_id}_right")
+        InlineKeyboardButton("⬅️", callback_data=f"spuzzle_move_{game_id}_left"),
+        InlineKeyboardButton("➡️", callback_data=f"spuzzle_move_{game_id}_right")
     ])
-    keyboard.append([InlineKeyboardButton("⬇️", callback_data=f"sliding_puzzle_move_{game_id}_down")])
-    keyboard.append([InlineKeyboardButton("✖️ بستن بازی", callback_data=f"sliding_puzzle_close_{game_id}")])
+    keyboard.append([InlineKeyboardButton("⬇️", callback_data=f"spuzzle_move_{game_id}_down")])
+    keyboard.append([InlineKeyboardButton("✖️ بستن بازی", callback_data=f"spuzzle_close_{game_id}")])
     
     return text, InlineKeyboardMarkup(keyboard)
 
-async def sliding_puzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
     chat_id = query.message.chat.id
@@ -2112,20 +2116,20 @@ async def sliding_puzzle_callback(update: Update, context: ContextTypes.DEFAULT_
 
     if action == "start":
         await query.answer()
-        if chat_id not in active_games['sliding_puzzle']:
-            active_games['sliding_puzzle'][chat_id] = {}
+        if chat_id not in active_games['spuzzle']:
+            active_games['spuzzle'] = {chat_id: {}}
         
         sent_message = await query.message.reply_text("در حال ساخت پازل کشویی...")
         game_id = sent_message.message_id
         
         game = {
             "game_id": game_id, "player_id": user.id,
-            "board": create_solvable_puzzle(),
+            "board": create_solvable_spuzzle(),
             "start_time": time.time()
         }
-        active_games['sliding_puzzle'][chat_id][game_id] = game
+        active_games['spuzzle'][chat_id][game_id] = game
         
-        text, reply_markup = await render_sliding_puzzle(game)
+        text, reply_markup = await render_spuzzle(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
         try: await query.message.delete()
@@ -2134,18 +2138,18 @@ async def sliding_puzzle_callback(update: Update, context: ContextTypes.DEFAULT_
 
     game_id = int(data[2])
     
-    if chat_id not in active_games['sliding_puzzle'] or game_id not in active_games['sliding_puzzle'][chat_id]:
+    if chat_id not in active_games['spuzzle'] or game_id not in active_games['spuzzle'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
         
-    game = active_games['sliding_puzzle'][chat_id][game_id]
+    game = active_games['spuzzle'][chat_id][game_id]
 
     if user.id != game.get('player_id'):
         return await query.answer("این بازی برای شما نیست!", show_alert=True)
 
     if action == "close":
         await query.answer()
-        del active_games['sliding_puzzle'][chat_id][game_id]
+        del active_games['spuzzle'][chat_id][game_id]
         await query.edit_message_text("پازل کشویی بسته شد.")
         return
 
@@ -2153,48 +2157,44 @@ async def sliding_puzzle_callback(update: Update, context: ContextTypes.DEFAULT_
         direction = data[3]
         board = game['board']
         empty_r, empty_c = -1, -1
-        # پیدا کردن موقعیت خانه خالی
         for r_idx, row in enumerate(board):
             if 0 in row:
                 empty_r, empty_c = r_idx, row.index(0)
                 break
 
-        # محاسبه موقعیت کاشی برای جابجایی
         tile_r, tile_c = empty_r, empty_c
         if direction == 'up': tile_r += 1
         elif direction == 'down': tile_r -= 1
         elif direction == 'left': tile_c += 1
         elif direction == 'right': tile_c -= 1
         
-        # بررسی معتبر بودن حرکت
-        if 0 <= tile_r < PUZZLE_SIZE and 0 <= tile_c < PUZZLE_SIZE:
-            # انجام جابجایی
+        if 0 <= tile_r < SPUZZLE_SIZE and 0 <= tile_c < SPUZZLE_SIZE:
             board[empty_r][empty_c], board[tile_r][tile_c] = board[tile_r][tile_c], board[empty_r][empty_c]
             await query.answer()
 
-            if is_puzzle_solved(board):
+            if is_spuzzle_solved(board):
                 duration = time.time() - game['start_time']
                 
-                await query.message.delete()
+                try: await query.message.delete()
+                except Exception: pass
+                
                 await context.bot.send_message(
                     chat_id=chat_id,
                     text=f"🏆 **تبریک {user.mention_html()}!** 🏆\n\nشما پازل را در زمان **{int(duration)} ثانیه** حل کردید!",
                     parse_mode=ParseMode.HTML
                 )
-                del active_games['sliding_puzzle'][chat_id][game_id]
+                del active_games['spuzzle'][chat_id][game_id]
                 return
             
-            text, reply_markup = await render_sliding_puzzle(game)
+            text, reply_markup = await render_spuzzle(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-
         else:
             await query.answer("حرکت غیرمجاز!")
 
     elif action == "noop":
         await query.answer()
 
-# ========================= SLIDING PUZZLE CODE (END) ==========================
-
+# ========================= SLIDING PUZZLE CODE (END) - v2 ==========================
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -3006,7 +3006,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
-    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_'))
+    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^spuzzle_'))
 
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند

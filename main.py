@@ -3006,7 +3006,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
-    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^spuzzle_'))
+    application.add_handler(CallbackQueryHandler(spuzzle_callback, pattern=r'^spuzzle_'))
 
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند

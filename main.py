@@ -34,7 +34,7 @@ OWNER_IDS = [7662192190, 6041119040] # آیدی‌های عددی ادمین‌�
 SUPPORT_USERNAME = "OLDKASEB" # یوزرنیم پشتیبانی بدون @
 FORCED_JOIN_CHANNEL = "@RHINOSOUL_TM" # کانال عضویت اجباری با @
 GROUP_INSTALL_LIMIT = 50 # حداکثر تعداد گروه‌هایی که ربات می‌تواند در آن‌ها نصب شود
-INITIAL_LIVES = 12 # تعداد جان اولیه در بازی حدس کلمه
+INITIAL_LIVES = 10 # تعداد جان اولیه در بازی حدس کلمه
 
 # --- تعریف حالت‌های مکالمه ---
 # برای بازی قارچ
@@ -158,7 +158,7 @@ TYPING_SENTENCES = [
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
 BOARD_WIDTH, BOARD_HEIGHT = 16, 18
-EMPTY_CELL = "🔹"  # کاراکتر نامرئی Zero-Width Space
+EMPTY_CELL = "↓"  # کاراکتر نامرئی Zero-Width Space
 FILLED_CELL = "⬛️"
 
 # تعریف شکل‌ها و چرخش‌های هر قطعه
@@ -1779,7 +1779,7 @@ async def render_tetris_board(game):
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-    chat_id = query.message.chat.id
+    chat_id = query.message.chat_id
     if await check_ban_status(update, context): return
     
     data = query.data.split('_'); action = data[1]
@@ -1800,7 +1800,7 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
-        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         
         try: await query.message.delete()
         except Exception: pass
@@ -1848,19 +1848,19 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
                 text, _ = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
-                await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
+                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML)
+                await query.message.reply_text(f"☠️ <b>بازی تمام شد!</b>\nامتیاز نهایی: <b>{game['score']}</b>", parse_mode=ParseMode.HTML)
                 del active_games['tetris'][chat_id][game_id]
                 return
             
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             return
 
         if is_valid_position(game['board'], piece):
             await query.answer()
             text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         else:
             piece['x'], piece['rotation'] = original_x, original_rotation
             await query.answer("حرکت غیرمجاز!")

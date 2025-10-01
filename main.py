@@ -1896,30 +1896,22 @@ def find_samegame_group(board, r_start, c_start):
                 q.append((nr, nc))
     return list(group)
 
-def apply_samegame_gravity(board):
-    """بلوک‌های بالایی را به خانه‌های خالی پایین منتقل می‌کند."""
+def refill_samegame_board(board):
+    """خانه‌های خالی را با بلوک‌های جدید و تصادفی از بالا پر می‌کند."""
     for c in range(SAMEGAME_WIDTH):
-        empty_row = SAMEGAME_HEIGHT - 1
+        empty_count = 0
+        # بلوک‌های موجود را به پایین منتقل کن
         for r in range(SAMEGAME_HEIGHT - 1, -1, -1):
-            if board[r][c] != EMPTY_CELL:
-                board[empty_row][c], board[r][c] = board[r][c], board[empty_row][c]
-                empty_row -= 1
+            if board[r][c] == EMPTY_CELL:
+                empty_count += 1
+            elif empty_count > 0:
+                board[r + empty_count][c] = board[r][c]
+                board[r][c] = EMPTY_CELL
+        
+        # خانه‌های خالی بالا را با رنگ‌های جدید پر کن
+        for r in range(empty_count):
+            board[r][c] = random.choice(SAMEGAME_COLORS)
     return board
-
-def shift_samegame_columns(board):
-    """ستون‌های خالی را حذف و ستون‌های دیگر را به سمت چپ منتقل می‌کند."""
-    new_board_cols = []
-    for c in range(SAMEGAME_WIDTH):
-        # بررسی اینکه آیا ستون کاملاً خالی است یا نه
-        if any(board[r][c] != EMPTY_CELL for r in range(SAMEGAME_HEIGHT)):
-            new_board_cols.append([board[r][c] for r in range(SAMEGAME_HEIGHT)])
-    
-    # اضافه کردن ستون‌های خالی به سمت راست
-    while len(new_board_cols) < SAMEGAME_WIDTH:
-        new_board_cols.append([EMPTY_CELL] * SAMEGAME_HEIGHT)
-    
-    # تبدیل ستون‌ها به ردیف‌ها برای بازگشت به ساختار اصلی
-    return [[new_board_cols[c][r] for c in range(SAMEGAME_WIDTH)] for r in range(SAMEGAME_HEIGHT)]
 
 def is_game_over_samegame(board):
     """بررسی می‌کند آیا حرکتی باقی مانده است یا خیر."""
@@ -1963,7 +1955,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if chat_id not in active_games['samegame']:
             active_games['samegame'][chat_id] = {}
         
-        sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
+        sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها (بی‌پایان)...")
         game_id = sent_message.message_id
         
         game = {
@@ -2006,27 +1998,22 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
         await query.answer()
         
-        # محاسبه امتیاز (امتیاز = (تعداد بلوک - ۱) به توان ۲)
         score_increment = (len(group) - 1) ** 2
         game['score'] += score_increment
         
-        # حذف بلوک‌ها
         for row, col in group:
             game['board'][row][col] = EMPTY_CELL
         
-        # اعمال جاذبه و جابجایی ستون‌ها
-        game['board'] = apply_samegame_gravity(game['board'])
-        game['board'] = shift_samegame_columns(game['board'])
+        # *** تغییر اصلی اینجاست ***
+        # به جای جاذبه و جابجایی ستون‌ها، خانه‌های خالی را دوباره پر می‌کنیم
+        game['board'] = refill_samegame_board(game['board'])
 
-        # چک کردن پایان بازی
         if is_game_over_samegame(game['board']):
-            remaining_blocks = sum(row.count(EMPTY_CELL) == 0 for row in game['board'] for cell in row)
-            final_score = game['score'] - (remaining_blocks * 10) # جریمه برای بلوک‌های باقی‌مانده
-            
+            final_score = game['score']
             text, reply_markup = await render_samegame_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
             
-            await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{final_score}**", parse_mode=ParseMode.MARKDOWN)
+            await query.message.reply_text(f"☠️ **بازی قفل شد و تمام شد!**\nامتیاز نهایی: **{final_score}**", parse_mode=ParseMode.MARKDOWN)
             del active_games['samegame'][chat_id][game_id]
             return
             

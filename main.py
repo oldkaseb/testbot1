@@ -2923,7 +2923,7 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =================================================================
 # ======================== MAIN FUNCTION ==========================
 # =================================================================def main() -> None:
-   def main() -> None:
+def main() -> None:
     """Start the bot."""
     setup_database()
     BOT_TOKEN = os.environ.get("BOT_TOKEN")

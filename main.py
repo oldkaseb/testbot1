@@ -158,7 +158,7 @@ TYPING_SENTENCES = [
 
 # --- ثابت‌ها و ساختارهای بازی تتریس ---
 BOARD_WIDTH, BOARD_HEIGHT = 14, 20
-EMPTY_CELL = "⛓️"  # کاراکتر نامرئی Zero-Width Space
+EMPTY_CELL = "▪️"  # کاراکتر نامرئی Zero-Width Space
 FILLED_CELL = "⬛️"
 
 # تعریف شکل‌ها و چرخش‌های هر قطعه
@@ -175,6 +175,10 @@ PIECE_SHAPES = {
 PIECE_COLORS = {
     'I': '🟦', 'O': '🟨', 'T': '🟪', 'S': '🟩', 'Z': '🟥', 'J': '🟧', 'L': '🟫'
 }
+
+SAMEGAME_WIDTH, SAMEGAME_HEIGHT = 10, 10
+SAMEGAME_COLORS = ["🟥", "🟩", "🟦", "🟨", "🟪"]
+
 # --- تنظیمات لاگ ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -213,7 +217,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'tetris': {}, 'samegame': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -328,8 +332,8 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # شناسه کاربر به انتهای callback_data اضافه می‌شود تا پنل اختصاصی شود
         keyboard = [
-            [InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
             [InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}")],
+            [InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
             [InlineKeyboardButton("✍️ بازی‌های تایپی و سرعتی", callback_data=f"rsgame_cat_typing_{user_id}")],
             [InlineKeyboardButton("🤫 بازی‌های ناشناس (ویژه ادمین)", callback_data=f"rsgame_cat_anon_{user_id}")],
             [InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")]
@@ -445,6 +449,7 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         text = "👤 لطفا بازی تک‌نفره مورد نظر خود را انتخاب کنید:"
         keyboard = [
             [InlineKeyboardButton("🔢 2048", callback_data=f"2048_start_{user_id}")],
+            [InlineKeyboardButton("✨ بازی جفت‌ها", callback_data=f"samegame_start_{user_id}")],
             [InlineKeyboardButton("🧱 تتریس", callback_data=f"tetris_start_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
         ]
@@ -1865,6 +1870,171 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             piece['x'], piece['rotation'] = original_x, original_rotation
             await query.answer("حرکت غیرمجاز!")
 
+# =========================== SAMEGAME CODE (START) ===========================
+
+def create_samegame_board():
+    """یک صفحه بازی تصادفی برای بازی جفت‌ها ایجاد می‌کند."""
+    return [[random.choice(SAMEGAME_COLORS) for _ in range(SAMEGAME_WIDTH)] for _ in range(SAMEGAME_HEIGHT)]
+
+def find_samegame_group(board, r_start, c_start):
+    """الگوریتم Flood Fill برای پیدا کردن تمام بلوک‌های همرنگ و متصل."""
+    target_color = board[r_start][c_start]
+    if target_color == EMPTY_CELL:
+        return []
+
+    q = [(r_start, c_start)]
+    group = set(q)
+    
+    while q:
+        r, c = q.pop(0)
+        # بررسی ۴ همسایه (بالا، پایین، چپ، راست)
+        for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+            nr, nc = r + dr, c + dc
+            if (0 <= nr < SAMEGAME_HEIGHT and 0 <= nc < SAMEGAME_WIDTH and
+                    board[nr][nc] == target_color and (nr, nc) not in group):
+                group.add((nr, nc))
+                q.append((nr, nc))
+    return list(group)
+
+def apply_samegame_gravity(board):
+    """بلوک‌های بالایی را به خانه‌های خالی پایین منتقل می‌کند."""
+    for c in range(SAMEGAME_WIDTH):
+        empty_row = SAMEGAME_HEIGHT - 1
+        for r in range(SAMEGAME_HEIGHT - 1, -1, -1):
+            if board[r][c] != EMPTY_CELL:
+                board[empty_row][c], board[r][c] = board[r][c], board[empty_row][c]
+                empty_row -= 1
+    return board
+
+def shift_samegame_columns(board):
+    """ستون‌های خالی را حذف و ستون‌های دیگر را به سمت چپ منتقل می‌کند."""
+    new_board_cols = []
+    for c in range(SAMEGAME_WIDTH):
+        # بررسی اینکه آیا ستون کاملاً خالی است یا نه
+        if any(board[r][c] != EMPTY_CELL for r in range(SAMEGAME_HEIGHT)):
+            new_board_cols.append([board[r][c] for r in range(SAMEGAME_HEIGHT)])
+    
+    # اضافه کردن ستون‌های خالی به سمت راست
+    while len(new_board_cols) < SAMEGAME_WIDTH:
+        new_board_cols.append([EMPTY_CELL] * SAMEGAME_HEIGHT)
+    
+    # تبدیل ستون‌ها به ردیف‌ها برای بازگشت به ساختار اصلی
+    return [[new_board_cols[c][r] for c in range(SAMEGAME_WIDTH)] for r in range(SAMEGAME_HEIGHT)]
+
+def is_game_over_samegame(board):
+    """بررسی می‌کند آیا حرکتی باقی مانده است یا خیر."""
+    for r in range(SAMEGAME_HEIGHT):
+        for c in range(SAMEGAME_WIDTH):
+            if board[r][c] != EMPTY_CELL:
+                # چک کردن همسایه سمت راست و پایین کافی است
+                if c + 1 < SAMEGAME_WIDTH and board[r][c] == board[r][c+1]:
+                    return False
+                if r + 1 < SAMEGAME_HEIGHT and board[r][c] == board[r+1][c]:
+                    return False
+    return True
+
+async def render_samegame_board(game):
+    """صفحه بازی جفت‌ها را برای نمایش به کاربر رندر می‌کند."""
+    game_id = game['game_id']
+    board = game['board']
+    score = game['score']
+    
+    text = f"✨ **بازی جفت‌ها**\nامتیاز: **{score}**"
+    
+    keyboard = []
+    for r in range(SAMEGAME_HEIGHT):
+        row_buttons = [InlineKeyboardButton(board[r][c], callback_data=f"samegame_click_{game_id}_{r}_{c}") for c in range(SAMEGAME_WIDTH)]
+        keyboard.append(row_buttons)
+        
+    keyboard.append([InlineKeyboardButton("✖️ بستن بازی", callback_data=f"samegame_close_{game_id}")])
+    
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+    if await check_ban_status(update, context): return
+    
+    data = query.data.split('_'); action = data[1]
+
+    if action == "start":
+        await query.answer()
+        if chat_id not in active_games['samegame']:
+            active_games['samegame'][chat_id] = {}
+        
+        sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
+        game_id = sent_message.message_id
+        
+        game = {
+            "game_id": game_id, "player_id": user.id,
+            "board": create_samegame_board(), "score": 0
+        }
+        active_games['samegame'][chat_id][game_id] = game
+        
+        text, reply_markup = await render_samegame_board(game)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        
+        try: await query.message.delete()
+        except Exception: pass
+        return
+
+    game_id = int(data[2])
+    
+    if chat_id not in active_games['samegame'] or game_id not in active_games['samegame'][chat_id]:
+        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+        return
+        
+    game = active_games['samegame'][chat_id][game_id]
+
+    if user.id != game.get('player_id'):
+        return await query.answer("این بازی برای شما نیست!", show_alert=True)
+
+    if action == "close":
+        await query.answer()
+        del active_games['samegame'][chat_id][game_id]
+        await query.edit_message_text("بازی جفت‌ها بسته شد.")
+        return
+
+    if action == "click":
+        r, c = int(data[3]), int(data[4])
+        
+        group = find_samegame_group(game['board'], r, c)
+        
+        if len(group) < 2:
+            return await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
+            
+        await query.answer()
+        
+        # محاسبه امتیاز (امتیاز = (تعداد بلوک - ۱) به توان ۲)
+        score_increment = (len(group) - 1) ** 2
+        game['score'] += score_increment
+        
+        # حذف بلوک‌ها
+        for row, col in group:
+            game['board'][row][col] = EMPTY_CELL
+        
+        # اعمال جاذبه و جابجایی ستون‌ها
+        game['board'] = apply_samegame_gravity(game['board'])
+        game['board'] = shift_samegame_columns(game['board'])
+
+        # چک کردن پایان بازی
+        if is_game_over_samegame(game['board']):
+            remaining_blocks = sum(row.count(EMPTY_CELL) == 0 for row in game['board'] for cell in row)
+            final_score = game['score'] - (remaining_blocks * 10) # جریمه برای بلوک‌های باقی‌مانده
+            
+            text, reply_markup = await render_samegame_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            
+            await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{final_score}**", parse_mode=ParseMode.MARKDOWN)
+            del active_games['samegame'][chat_id][game_id]
+            return
+            
+        text, reply_markup = await render_samegame_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+# ============================ SAMEGAME CODE (END) ============================
+
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
@@ -2675,6 +2845,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(memory_callback, pattern=r'^memory_'))
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
+    application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
 
     application.add_handler(MessageHandler(filters.Regex(r'^راهنما$') & filters.ChatType.GROUPS, text_help_trigger))
 

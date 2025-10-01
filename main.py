@@ -662,14 +662,12 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         return
-
-game_id = int(data[2])
-
-    if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
-        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
-        return
+        game_id = int(data[2])
+        if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
+            await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+            try: await query.edit_message_text("این بازی تمام شده است.")
+                except: pass
+                    return
     
     game = active_games['hokm'][chat_id][game_id]
 
@@ -1167,14 +1165,13 @@ if action == "start":
             pass
 
         return
-
-game_id = int(data[2])
-
+    
+    game_id = int(data[2])
     if chat_id not in active_games['dooz'] or game_id not in active_games['dooz'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
-        return
+            except: pass
+                return
         
     game = active_games['dooz'][chat_id][game_id]
 

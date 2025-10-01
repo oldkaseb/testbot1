@@ -2004,16 +2004,26 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for row, col in group:
             game['board'][row][col] = EMPTY_CELL
         
-        # *** تغییر اصلی اینجاست ***
-        # به جای جاذبه و جابجایی ستون‌ها، خانه‌های خالی را دوباره پر می‌کنیم
         game['board'] = refill_samegame_board(game['board'])
 
+        # *** تغییر اصلی اینجاست ***
         if is_game_over_samegame(game['board']):
             final_score = game['score']
-            text, reply_markup = await render_samegame_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
             
-            await query.message.reply_text(f"☠️ **بازی قفل شد و تمام شد!**\nامتیاز نهایی: **{final_score}**", parse_mode=ParseMode.MARKDOWN)
+            # متن پیام نهایی را می‌سازیم
+            final_text = (
+                f"✨ **بازی جفت‌ها** ✨\n\n"
+                f"☠️ **بازی قفل شد و تمام شد!**\n"
+                f"امتیاز نهایی: **{final_score}**"
+            )
+            
+            # پیام اصلی بازی را با متن نهایی ویرایش کرده و دکمه‌ها را حذف می‌کنیم
+            await query.edit_message_text(
+                text=final_text, 
+                reply_markup=None, # حذف دکمه‌ها
+                parse_mode=ParseMode.MARKDOWN
+            )
+            
             del active_games['samegame'][chat_id][game_id]
             return
             

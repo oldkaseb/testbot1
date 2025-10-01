@@ -453,7 +453,7 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         text = "👤 لطفا بازی تک‌نفره مورد نظر خود را انتخاب کنید:"
         keyboard = [
             [InlineKeyboardButton("2️⃣0️⃣4️⃣8️⃣", callback_data=f"2048_start_{user_id}")],
-            [InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"sliding_puzzle_start_{user_id}")],
+            [InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"sliding_puzzle_cat_start_{user_id}")],
             [InlineKeyboardButton("✨ بازی جفت‌ها", callback_data=f"samegame_start_{user_id}")],
             [InlineKeyboardButton("🧱 تتریس", callback_data=f"tetris_start_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
@@ -3008,7 +3008,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
-    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_')) # <-- الگوی صحیح
+    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_cat_'))
 
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند

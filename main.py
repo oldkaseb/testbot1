@@ -2922,8 +2922,7 @@ async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # =================================================================
 # ======================== MAIN FUNCTION ==========================
-# =================================================================
-def main() -> None:
+# =================================================================def main() -> None:
     """Start the bot."""
     setup_database()
     BOT_TOKEN = os.environ.get("BOT_TOKEN")
@@ -2933,7 +2932,7 @@ def main() -> None:
 
     application = Application.builder().token(BOT_TOKEN).build()
     
-    # --- Conversation Handlers (باید اولویت بالاتری داشته باشند) ---
+    # --- Conversation Handlers (این بخش صحیح است و بدون تغییر باقی می‌ماند) ---
     gharch_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(gharch_start_callback, pattern=r'^gharch_start_')],
         states={
@@ -2959,21 +2958,20 @@ def main() -> None:
         states={
             ENTERING_ETERAF_TEXT: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_eteraf_text)]
         },
-        fallbacks=[CommandHandler('cancel', cancel_game_conversation)], # از همان تابع لغو مشترک استفاده می‌کند
-        per_user=True, per_chat=False # این مکالمه باید برای هر کاربر جدا باشد
+        fallbacks=[CommandHandler('cancel', cancel_game_conversation)],
+        per_user=True, per_chat=False
     )
 
     application.add_handler(gharch_conv)
     application.add_handler(guess_number_conv)
     application.add_handler(eteraf_conv)
 
-    # --- Command Handlers ---
+    # --- Command Handlers (بدون تغییر) ---
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("rsgame", rsgame_command))
-
     application.add_handler(CommandHandler("stop", stop_games_command))
     
-    # دستورات مالک ربات
+    # دستورات مالک ربات (بدون تغییر)
     application.add_handler(CommandHandler("setstart", set_start_command, filters=filters.User(OWNER_IDS)))
     application.add_handler(CommandHandler("stats", stats_command, filters=filters.User(OWNER_IDS)))
     application.add_handler(CommandHandler("fwdusers", fwdusers_command, filters=filters.User(OWNER_IDS)))
@@ -2986,18 +2984,21 @@ def main() -> None:
     application.add_handler(CommandHandler("ban_group", ban_group_command, filters=filters.User(OWNER_IDS)))
     application.add_handler(CommandHandler("unban_group", unban_group_command, filters=filters.User(OWNER_IDS)))
 
-    application.add_handler(CallbackQueryHandler(rsgame_check_join_callback, pattern=r'^rsgame_check_join$'))
+    # ========================== بخش اصلی تغییرات اینجاست ==========================
+    # --- CallbackQueryHandlers ---
+    # ترتیب بسیار مهم است: از هندلرهای اختصاصی‌تر به عمومی‌تر می‌رویم.
 
-    # پنل اصلی
-    application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))
-    application.add_handler(CallbackQueryHandler(rsgame_pv_callback, pattern=r'^rsgame_cat_main_pv$'))
-    # شروع بازی‌ها از پنل
-    # FIX: الگوها را اصلاح کنید
+    # ۱. هندلرهای عمومی رابط کاربری (که بخشی از یک بازی خاص نیستند)
+    application.add_handler(CallbackQueryHandler(rsgame_check_join_callback, pattern=r'^rsgame_check_join$'))
     application.add_handler(CallbackQueryHandler(rsgame_close_callback, pattern=r'^rsgame_close_'))
+    application.add_handler(CallbackQueryHandler(rsgame_pv_callback, pattern=r'^rsgame_cat_main_pv$'))
+    
+    # ۲. تمام هندلرهای مربوط به بازی‌ها (شروع و حرکات داخلی)
+    # این‌ها باید قبل از هندلر عمومی منوها بیایند
     application.add_handler(CallbackQueryHandler(hads_kalame_start_callback, pattern=r'^hads_kalame_start_'))
     application.add_handler(CallbackQueryHandler(type_start_callback, pattern=r'^type_start_'))
     application.add_handler(CallbackQueryHandler(eteraf_start_callback, pattern=r'^eteraf_start_default_'))
-    # مدیریت داخلی بازی‌ها
+    
     application.add_handler(CallbackQueryHandler(hokm_callback, pattern=r'^hokm_'))
     application.add_handler(CallbackQueryHandler(dooz_callback, pattern=r'^dooz_'))
     application.add_handler(CallbackQueryHandler(connect4_callback, pattern=r'^connect4_'))
@@ -3006,18 +3007,22 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(game_2048_callback, pattern=r'^2048_'))
     application.add_handler(CallbackQueryHandler(tetris_callback, pattern=r'^tetris_'))
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
-    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_cat_'))
+    application.add_handler(CallbackQueryHandler(sliding_puzzle_callback, pattern=r'^sliding_puzzle_')) # <-- الگوی صحیح
 
-    application.add_handler(MessageHandler(filters.Regex(r'^راهنما$') & filters.ChatType.GROUPS, text_help_trigger))
-
-    application.add_handler(MessageHandler(filters.Regex(r'^پینگ$') & filters.User(OWNER_IDS), ping_command))
+    # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
+    # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند
+    application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))
     
-    # --- Message Handlers (باید اولویت کمتری داشته باشند) ---
+    # ========================== پایان بخش تغییرات ==========================
+
+    # --- Message Handlers (بدون تغییر) ---
+    application.add_handler(MessageHandler(filters.Regex(r'^راهنما$') & filters.ChatType.GROUPS, text_help_trigger))
+    application.add_handler(MessageHandler(filters.Regex(r'^پینگ$') & filters.User(OWNER_IDS), ping_command))
     application.add_handler(MessageHandler(filters.Regex(r'^[آ-ی]$') & filters.ChatType.GROUPS, handle_letter_guess))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.PRIVATE, handle_anonymous_message))
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND & filters.ChatType.GROUPS, handle_typing_attempt))
     
-    # --- سایر Handler ها ---
+    # --- سایر Handler ها (بدون تغییر) ---
     application.add_handler(ChatMemberHandler(track_chats, ChatMemberHandler.MY_CHAT_MEMBER))
     
     logger.info("Bot is starting with the new refactored logic...")

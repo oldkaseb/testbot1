@@ -1939,7 +1939,6 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی فعال دارید.", show_alert=True)
             return
-            await query.answer()
         sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
@@ -2003,7 +2002,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif action == "noop":
         await query.answer("این بازی تمام شده است.", show_alert=True)
-
+        await query.answer()
 
 # ============================ SAMEGAME CODE (END) ============================
 # ======================== SLIDING PUZZLE CODE (START) - v2 =========================

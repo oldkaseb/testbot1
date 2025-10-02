@@ -199,7 +199,7 @@ def convert_persian_to_english_numbers(text: str) -> str:
     return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
 # --- مدیریت وضعیت بازی‌ها ---
-active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'samegame': {}, 'spuzzle': {}, 'doz4p': {}}
+active_games = {'guess_number': {}, 'dooz': {}, 'hangman': {}, 'typing': {}, 'hokm': {}, 'connect4': {}, 'rps': {}, 'memory': {}, '2048': {}, 'samegame': {}, 'spuzzle': {}, 'doz4p': {}, 'gardone': {}}
 active_gharch_games = {}
 
 # --- ##### تغییر کلیدی: منطق جدید عضویت اجباری و بن ##### ---
@@ -296,9 +296,11 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     
     user = update.effective_user
-    user_id = user.id  # شناسه کاربری که دستور را زده است
+    user_id = user.id
+    chat_id = update.effective_chat.id
     is_member = False
 
+    # بخش بررسی عضویت (بدون تغییر)
     if await is_owner(user_id):
         is_member = True
     else:
@@ -307,31 +309,44 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if member.status in ['member', 'administrator', 'creator']:
                 is_member = True
         except Exception:
-            is_member = False 
+            is_member = False
 
     if is_member:
         text = f"🎮 {user.first_name} عزیز، به پنل بازی خوش آمدید.\n\nلطفا دسته بندی مورد نظر خود را انتخاب کنید:"
         
-        # شناسه کاربر به انتهای callback_data اضافه می‌شود تا پنل اختصاصی شود
+        # --- بخش اصلی تغییرات اینجاست ---
+        # دکمه‌ها را در یک ساختار دو ستونه می‌چینیم
         keyboard = [
-            [InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}")],
-            [InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")],
-            [InlineKeyboardButton("✍️ بازی‌های تایپی و سرعتی", callback_data=f"rsgame_cat_typing_{user_id}")],
-            [InlineKeyboardButton("🤫 بازی‌های ناشناس (ویژه ادمین)", callback_data=f"rsgame_cat_anon_{user_id}")],
-            [InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")]
+            [
+                InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}"),
+                InlineKeyboardButton("🏆 بازی‌های گروهی", callback_data=f"rsgame_cat_board_{user_id}")
+            ],
+            [
+                InlineKeyboardButton("✍️ بازی‌های تایپی", callback_data=f"rsgame_cat_typing_{user_id}"),
+                InlineKeyboardButton("🤫 بازی‌های ناشناس", callback_data=f"rsgame_cat_anon_{user_id}")
+            ]
         ]
+
+        # دکمه گردونه شانس در یک ردیف جداگانه برای ادمین‌ها اضافه می‌شود
+        if update.effective_chat.type != 'private':
+            if await is_group_admin(user_id, chat_id, context):
+                keyboard.append([InlineKeyboardButton("🎡 گردونه شانس (ویژه ادمین)", callback_data=f"gardone_start_{user_id}")])
+        
+        # دکمه بستن پنل در انتها
+        keyboard.append([InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")])
+        # --- پایان بخش تغییرات ---
         
         if update.message:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         elif update.callback_query:
             await update.callback_query.answer()
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-    else:
-        text = "❗️برای استفاده از بازی‌ها، لطفا ابتدا در کانال ما عضو شوید و سپس دکمه «عضو شدم» را بزنید."
-        keyboard = [
-            [InlineKeyboardButton("عضویت در کانال", url=f"https://t.me/{FORCED_JOIN_CHANNEL.lstrip('@')}")],
-            [InlineKeyboardButton("✅ عضو شدم", callback_data="rsgame_check_join")]
-        ]
+        else:
+            text = "❗️برای استفاده از بازی‌ها، لطفا ابتدا در کانال ما عضو شوید و سپس دکمه «عضو شدم» را بزنید."
+            keyboard = [
+                [InlineKeyboardButton("عضویت در کانال", url=f"https://t.me/{FORCED_JOIN_CHANNEL.lstrip('@')}")],
+                [InlineKeyboardButton("✅ عضو شدم", callback_data="rsgame_check_join")]
+            ]
         if update.message:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         elif update.callback_query:
@@ -2382,6 +2397,139 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "noop":
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
+# ======================== GARDONE SHANS (START) =========================
+
+async def render_gardone_board(game: dict):
+    """صفحه گردونه شانس را با لیست شرکت‌کنندگان و دکمه‌ها می‌سازد."""
+    game_id = game['game_id']
+    starter_admin_id = game['starter_admin_id']
+    participants = game['participants']
+    
+    participant_list = "هنوز کسی ثبت نام نکرده است."
+    if participants:
+        # لیست شرکت‌کنندگان را با منشن کردن نامشان می‌سازیم
+        participant_list = "\n".join([f"👤 {p['name']}" for p in participants])
+
+    text = f"🎡 **گردونه شانس فعال است!** 🎡\n\n" \
+           f"برای شرکت در قرعه‌کشی روی دکمه «پیوستن» کلیک کنید.\n\n" \
+           f"**لیست شرکت‌کنندگان ({len(participants)} نفر):**\n" \
+           f"{participant_list}"
+
+    keyboard = [
+        [InlineKeyboardButton("✅ پیوستن به گردونه", callback_data=f"gardone_join_{game_id}")],
+        [InlineKeyboardButton("🎰 چرخاندن گردونه", callback_data=f"gardone_spin_{game_id}_{starter_admin_id}")],
+        [InlineKeyboardButton("❌ لغو گردونه", callback_data=f"gardone_cancel_{game_id}_{starter_admin_id}")],
+    ]
+    return text, InlineKeyboardMarkup(keyboard)
+
+async def gardone_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user = query.from_user
+    chat_id = query.message.chat.id
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    if action == "start":
+        await query.answer()
+        
+        # بررسی مالکیت پنل
+        try:
+            target_user_id = int(data[-1])
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+        except (ValueError, IndexError):
+            return
+
+        # بررسی اینکه کاربر ادمین است
+        if not await is_group_admin(user.id, chat_id, context):
+            await query.answer("این بخش فقط برای مدیران گروه است.", show_alert=True)
+            return
+
+        # جلوگیری از شروع چند گردونه همزمان در یک گروه
+        if chat_id in active_games['gardone']:
+            await query.answer("یک گردونه شانس در این گروه فعال است.", show_alert=True)
+            return
+            
+        sent_message = await query.message.reply_text("در حال آماده‌سازی گردونه شانس...")
+        game_id = sent_message.message_id
+        
+        game = {
+            "game_id": game_id,
+            "starter_admin_id": user.id, # شناسه ادمینی که بازی را ساخته
+            "participants": [] # لیست خالی برای شرکت‌کنندگان
+        }
+        active_games['gardone'][chat_id] = game
+        
+        text, reply_markup = await render_gardone_board(game)
+        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
+        return
+
+    # استخراج game_id از callback_data برای اکشن‌های دیگر
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
+
+    if chat_id not in active_games['gardone'] or active_games['gardone'][chat_id]['game_id'] != game_id:
+        await query.answer("این گردونه شانس دیگر فعال نیست.", show_alert=True)
+        return
+        
+    game = active_games['gardone'][chat_id]
+
+    if action == "join":
+        # ۱. ابتدا عضویت در کانال را چک می‌کنیم
+        if not await check_join_for_alert(update, context):
+            return # اگر عضو نباشد، تابع چک خودش هشدار می‌دهد و خارج می‌شود
+
+        # ۲. چک می‌کنیم که کاربر قبلاً نپیوسته باشد
+        if any(p['id'] == user.id for p in game['participants']):
+            await query.answer("شما قبلاً در این قرعه‌کشی شرکت کرده‌اید!", show_alert=True)
+            return
+
+        # ۳. کاربر را به لیست اضافه می‌کنیم
+        game['participants'].append({'id': user.id, 'name': user.first_name})
+        await query.answer("شما با موفقیت به گردونه شانس پیوستید!")
+        
+        # ۴. پیام را با لیست جدید به‌روزرسانی می‌کنیم
+        text, reply_markup = await render_gardone_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+
+    elif action == "spin":
+        starter_admin_id = int(data[3])
+        if user.id != starter_admin_id:
+            await query.answer("فقط ادمینی که گردونه را ساخته، می‌تواند آن را بچرخاند!", show_alert=True)
+            return
+
+        if not game['participants']:
+            await query.answer("هیچ‌کس در قرعه‌کشی شرکت نکرده است!", show_alert=True)
+            return
+
+        await query.answer("گردونه در حال چرخش است...")
+        winner = random.choice(game['participants'])
+        
+        final_text = f"🎉 **برنده مشخص شد!** 🎉\n\n" \
+                     f"تبریک به **{winner['name']}** عزیز!\nشما برنده خوش‌شانس این گردونه بودید."
+        
+        await query.edit_message_text(final_text, reply_markup=None, parse_mode=ParseMode.HTML)
+        del active_games['gardone'][chat_id]
+
+    elif action == "cancel":
+        starter_admin_id = int(data[3])
+        if user.id != starter_admin_id:
+            await query.answer("فقط ادمینی که گردونه را ساخته، می‌تواند آن را لغو کند!", show_alert=True)
+            return
+            
+        await query.edit_message_text("🎡 گردونه شانس توسط ادمین لغو شد.")
+        del active_games['gardone'][chat_id]
+        
+# ========================= GARDONE SHANS (END) ==========================
 # ======================== 4-PLAYER DOZ CODE (END) =========================
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -3256,7 +3404,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(samegame_callback, pattern=r'^samegame_'))
     application.add_handler(CallbackQueryHandler(spuzzle_callback, pattern=r'^spuzzle_'))
     application.add_handler(CallbackQueryHandler(doz4p_callback, pattern=r'^doz4p_'))
-
+    application.add_handler(CallbackQueryHandler(gardone_callback, pattern=r'^gardone_'))
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند
     application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))

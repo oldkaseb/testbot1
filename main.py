@@ -1852,17 +1852,10 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
-# --- توابع کمکی تتریس (منطق اصلی بدون تغییر) ---
-
 def create_new_piece():
     """یک قطعه جدید به صورت تصادفی انتخاب می‌کند."""
     shape_name = random.choice(list(PIECE_SHAPES.keys()))
-    return {
-        'shape_name': shape_name,
-        'rotation': 0,
-        'x': BOARD_WIDTH // 2 - 2,
-        'y': 0
-    }
+    return { 'shape_name': shape_name, 'rotation': 0, 'x': BOARD_WIDTH // 2 - 2, 'y': 0 }
 
 def get_piece_matrix(piece):
     """ماتریکس شکل فعلی قطعه را بر اساس چرخش آن برمی‌گرداند."""
@@ -1905,10 +1898,10 @@ async def render_tetris_board(game, is_finished=False):
     """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند."""
     game_id = game['game_id']
     board = [row[:] for row in game['board']]
-    current_piece = game['current_piece']
     score = game['score']
     
-    if current_piece and not is_finished:
+    if not is_finished and game.get('current_piece'):
+        current_piece = game['current_piece']
         piece_matrix = get_piece_matrix(current_piece)
         color = PIECE_COLORS[current_piece['shape_name']]
         for r, row in enumerate(piece_matrix):
@@ -1918,12 +1911,11 @@ async def render_tetris_board(game, is_finished=False):
                         board[current_piece['y'] + r][current_piece['x'] + c] = color
     
     board_str = "\n".join("".join(row) for row in board)
-    
     text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
     
     if is_finished:
         text += f"\n\n☠️ <b>بازی تمام شد!</b>"
-        return text, None # بدون دکمه
+        return text, None
 
     keyboard = [
         [
@@ -1934,23 +1926,20 @@ async def render_tetris_board(game, is_finished=False):
         [InlineKeyboardButton("⏬ سقوط", callback_data=f"tetris_move_{game_id}_drop")],
         [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"tetris_close_{game_id}")],
     ]
-    
     return text, InlineKeyboardMarkup(keyboard)
 
 # --- تابع اصلی و بازنویسی شده تتریس ---
-
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
-    # if await check_ban_status(update, context): return
-    
     data = query.data.split('_')
     action = data[1]
 
     if action == "start":
+        # ... منطق شروع بازی بدون تغییر ...
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -1959,30 +1948,23 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except (ValueError, IndexError):
             await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
             return
-
         if chat_id not in active_games['tetris']:
-            active_games['tetris'][chat_id] = {}
-        
+            active_games['tetris'] = {}
         if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی تتریس فعال دارید.", show_alert=True)
             return
-
         sent_message = await query.message.reply_text("در حال ساخت بازی تتریس...")
         game_id = sent_message.message_id
-        
         game = {
             "game_id": game_id, "player_id": user.id,
             "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
             "current_piece": create_new_piece(), "score": 0, "status": "playing",
-            "is_moving": False  # << قفل برای جلوگیری از گیر کردن
+            "is_moving": False
         }
         active_games['tetris'][chat_id][game_id] = game
-        
         text, reply_markup = await render_tetris_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-        
-        try:
-            await query.message.delete()
+        try: await query.message.delete()
         except Exception: pass
         return
 
@@ -2004,74 +1986,73 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if game['status'] != 'playing':
         return
 
-    # << قفل برای جلوگیری از کلیک‌های همزمان >>
     if game.get('is_moving', False):
         await query.answer("کمی صبر کنید...")
         return
         
     game['is_moving'] = True
     try:
+        # --- ساختار اصلاح شده برای Action ها ---
         if action == "move":
             direction = data[3]
             piece = game['current_piece']
-            original_x, original_rotation = piece['x'], piece['rotation']
-
-            if direction == 'left':
-                piece['x'] -= 1
-            elif direction == 'right':
-                piece['x'] += 1
-            elif direction == 'rotate':
-                num_rotations = len(PIECE_SHAPES[piece['shape_name']])
-                piece['rotation'] = (piece['rotation'] + 1) % num_rotations
             
-            # اگر حرکت معتبر بود، صفحه را آپدیت کن
-            if is_valid_position(game['board'], piece):
-                text, reply_markup = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            # اگر نامعتبر بود، به حالت قبل برگردان
-            else:
-                piece['x'], piece['rotation'] = original_x, original_rotation
-                await query.answer("حرکت غیرمجاز!")
+            # --- منطق سقوط (Drop) ---
+            if direction == 'drop':
+                while is_valid_position(game['board'], piece):
+                    piece['y'] += 1
+                piece['y'] -= 1
+                
+                game['board'] = lock_piece(game['board'], piece)
+                game['board'], score_inc = clear_lines(game['board'])
+                game['score'] += score_inc
+                game['current_piece'] = create_new_piece()
 
-        elif action == 'drop':
-            piece = game['current_piece']
-            while is_valid_position(game['board'], piece):
-                piece['y'] += 1
-            piece['y'] -= 1
+                if not is_valid_position(game['board'], game['current_piece']):
+                    game['status'] = 'game_over'
+                    text, reply_markup = await render_tetris_board(game, is_finished=True)
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    del active_games['tetris'][chat_id][game_id]
+                else:
+                    text, reply_markup = await render_tetris_board(game)
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
             
-            game['board'] = lock_piece(game['board'], piece)
-            game['board'], score_inc = clear_lines(game['board'])
-            game['score'] += score_inc
-            game['current_piece'] = create_new_piece()
-
-            # بررسی پایان بازی
-            if not is_valid_position(game['board'], game['current_piece']):
-                game['status'] = 'game_over'
-                text, reply_markup = await render_tetris_board(game, is_finished=True)
-                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-                del active_games['tetris'][chat_id][game_id]
+            # --- منطق سایر حرکات ---
             else:
-                text, reply_markup = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                original_x, original_rotation = piece['x'], piece['rotation']
+                if direction == 'left':
+                    piece['x'] -= 1
+                elif direction == 'right':
+                    piece['x'] += 1
+                elif direction == 'rotate':
+                    num_rotations = len(PIECE_SHAPES[piece['shape_name']])
+                    piece['rotation'] = (piece['rotation'] + 1) % num_rotations
+                
+                if is_valid_position(game['board'], piece):
+                    text, reply_markup = await render_tetris_board(game)
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                else:
+                    piece['x'], piece['rotation'] = original_x, original_rotation
+                    await query.answer("حرکت غیرمجاز!")
 
         elif action == "close":
             await query.edit_message_text("بازی تتریس بسته شد.")
             del active_games['tetris'][chat_id][game_id]
 
     finally:
-        # در هر صورت، قفل را آزاد کن
-        if game_id in active_games.get(chat_id, {}):
+        # در هر صورت، قفل را آزاد کن (مگر اینکه بازی حذف شده باشد)
+        if chat_id in active_games['tetris'] and game_id in active_games['tetris'][chat_id]:
             game['is_moving'] = False
 
-# =========================== SAMEGAME CODE (START) ===========================
-# --- توابع کمکی SameGame (منطق اصلی بدون تغییر) ---
+# =========================== SAMEGAME CODE (START) ==========================
+# --- توابع کمکی SameGame ---
 
 def create_samegame_board():
     """یک صفحه بازی تصادفی برای بازی جفت‌ها ایجاد می‌کند."""
     return [[random.choice(SAMEGAME_COLORS) for _ in range(SAMEGAME_WIDTH)] for _ in range(SAMEGAME_HEIGHT)]
 
 def find_samegame_group(board, r_start, c_start):
-    """الگوریتم Flood Fill برای پیدا کردن تمام بلوک‌های همرنگ و متصل."""
+    """تمام بلوک‌های همرنگ و متصل را پیدا می‌کند."""
     target_color = board[r_start][c_start]
     if target_color == EMPTY_CELL:
         return []
@@ -2081,7 +2062,6 @@ def find_samegame_group(board, r_start, c_start):
     
     while q:
         r, c = q.pop(0)
-        # بررسی ۴ همسایه (بالا، پایین، چپ، راست)
         for dr, dc in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
             nr, nc = r + dr, c + dc
             if (0 <= nr < SAMEGAME_HEIGHT and 0 <= nc < SAMEGAME_WIDTH and
@@ -2090,25 +2070,20 @@ def find_samegame_group(board, r_start, c_start):
                 q.append((nr, nc))
     return list(group)
 
-def refill_samegame_board(board):
-    """ستون‌ها را پس از حذف بلوک‌ها مرتب کرده و خانه‌های خالی را پر می‌کند."""
-    new_board = [[EMPTY_CELL for _ in range(SAMEGAME_WIDTH)] for _ in range(SAMEGAME_HEIGHT)]
-    for c in range(SAMEGAME_WIDTH):
-        # ستون فعلی را بدون خانه‌های خالی در یک لیست موقت بریز
-        temp_col = [board[r][c] for r in range(SAMEGAME_HEIGHT) if board[r][c] != EMPTY_CELL]
-        
-        # لیست موقت را در انتهای ستون جدید قرار بده
-        for i, color in enumerate(temp_col):
-            new_board[SAMEGAME_HEIGHT - len(temp_col) + i][c] = color
-            
-    return new_board
+# --- تابع بازنویسی شده برای پر کردن تصادفی ---
+def refill_samegame_board_randomly(board):
+    """خانه‌های خالی را با بلوک‌های رنگی تصادفی جدید پر می‌کند."""
+    for r in range(SAMEGAME_HEIGHT):
+        for c in range(SAMEGAME_WIDTH):
+            if board[r][c] == EMPTY_CELL:
+                board[r][c] = random.choice(SAMEGAME_COLORS)
+    return board
 
 def is_game_over_samegame(board):
     """بررسی می‌کند آیا حرکتی باقی مانده است یا خیر."""
     for r in range(SAMEGAME_HEIGHT):
         for c in range(SAMEGAME_WIDTH):
             if board[r][c] != EMPTY_CELL:
-                # چک کردن همسایه سمت راست و پایین کافی است
                 if c + 1 < SAMEGAME_WIDTH and board[r][c] == board[r][c+1]:
                     return False
                 if r + 1 < SAMEGAME_HEIGHT and board[r][c] == board[r+1][c]:
@@ -2121,11 +2096,16 @@ async def render_samegame_board(game, is_finished=False):
     board = game['board']
     score = game['score']
     
-    text = f"✨ **بازی جفت‌ها**\nامتیاز: **{score}**"
+    text = f"✨ **بازی جفت‌ها (بی‌پایان)**\nامتیاز: **{score}**"
     
     if is_finished:
-        text += f"\n\n☠️ **بازی قفل شد و تمام شد!**"
-        return text, None # بدون دکمه
+        text += f"\n\n☠️ **حرکت دیگری باقی نمانده! بازی تمام شد.**"
+        # رندر کردن بورد نهایی بدون دکمه
+        keyboard = []
+        for r in range(SAMEGAME_HEIGHT):
+            row_buttons = [InlineKeyboardButton(board[r][c], callback_data=f"samegame_noop_{game_id}") for c in range(SAMEGAME_WIDTH)]
+            keyboard.append(row_buttons)
+        return text, InlineKeyboardMarkup(keyboard)
 
     keyboard = []
     for r in range(SAMEGAME_HEIGHT):
@@ -2143,8 +2123,6 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = query.from_user
     chat_id = query.message.chat.id
 
-    # if await check_ban_status(update, context): return
-    
     data = query.data.split('_')
     action = data[1]
 
@@ -2162,27 +2140,20 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             active_games['samegame'][chat_id] = {}
             
         if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
-            await query.answer("شما از قبل یک بازی جفت‌ها فعال دارید.", show_alert=True)
+            await query.answer("شما از قبل یک بازی فعال دارید.", show_alert=True)
             return
 
         sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
-        game = {
-            "game_id": game_id, 
-            "player_id": user.id,
-            "board": create_samegame_board(), 
-            "score": 0
-        }
+        game = { "game_id": game_id, "player_id": user.id, "board": create_samegame_board(), "score": 0 }
         active_games['samegame'][chat_id][game_id] = game
         
         text, reply_markup = await render_samegame_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        try:
-            await query.message.delete()
-        except Exception:
-            pass
+        try: await query.message.delete()
+        except Exception: pass
         return
 
     try:
@@ -2212,13 +2183,14 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
             return
         
-        score_increment = (len(group) - 2) ** 2 # فرمول امتیازدهی استاندارد
+        score_increment = (len(group) - 2) ** 2
         game['score'] += score_increment
         
         for row, col in group:
             game['board'][row][col] = EMPTY_CELL
         
-        game['board'] = refill_samegame_board(game['board'])
+        # << فراخوانی تابع جدید برای پر کردن تصادفی >>
+        game['board'] = refill_samegame_board_randomly(game['board'])
 
         if is_game_over_samegame(game['board']):
             text, reply_markup = await render_samegame_board(game, is_finished=True)
@@ -2231,6 +2203,10 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif action == "close":
         await query.edit_message_text("بازی جفت‌ها بسته شد.")
         del active_games['samegame'][chat_id][game_id]
+        
+    elif action == "noop":
+        await query.answer("این بازی تمام شده است.", show_alert=True)
+
 
 # ============================ SAMEGAME CODE (END) ============================
 # ======================== SLIDING PUZZLE CODE (START) - v2 =========================

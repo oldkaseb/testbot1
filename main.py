@@ -250,7 +250,7 @@ async def check_join_for_alert(update: Update, context: ContextTypes.DEFAULT_TYP
 
     if update.callback_query:
         await update.callback_query.answer(
-            " @RHINOSOUL_TM برای پیوستن به بازی باید در کانال عضو شوید",
+            "برای پیوستن به بازی باید در کانال عضو شوید",
             show_alert=True
         )
     return False
@@ -649,7 +649,10 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- ساختار جدید با elif ---
     if action == "join":
-        if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context):
+            await query.answer("برای پیوستن به بازی ابتدا عضو کانال شوید", show_alert=True)
+            return
+            
         if any(p['id'] == user.id for p in game['players']):
             await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
             return

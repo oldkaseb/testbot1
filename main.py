@@ -2365,8 +2365,7 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def hads_kalame_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user = query.from_user
-
-data = query.data.split('_')
+    data = query.data.split('_')
     try:
         target_user_id = int(data[-1])
     except (ValueError, IndexError):

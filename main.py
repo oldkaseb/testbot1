@@ -649,7 +649,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- ساختار جدید با elif ---
     if action == "join":
-        # if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context): return
         if any(p['id'] == user.id for p in game['players']):
             await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
             return
@@ -1182,7 +1182,7 @@ async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # --- ساختار جدید با elif ---
     if action == "join":
-        # if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context): return
 
         if any(p['id'] == user.id for p in game['players_info']):
             await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
@@ -1405,7 +1405,7 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games['connect4'][chat_id][game_id]
 
     if action == "join":
-        # if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context): return
 
         if any(p['id'] == user.id for p in game['players_info']):
             await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
@@ -1541,7 +1541,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games['rps'][chat_id][game_id]
 
     if action == "join":
-        # if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context): return
         
         if any(p['id'] == user.id for p in game['players_info']):
             await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
@@ -1752,7 +1752,7 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games['memory'][chat_id][game_id]
 
     if action == "join":
-        # ... (منطق join بدون تغییر باقی می‌ماند)
+        if not await check_join_for_alert(update, context): return
         if any(p['id'] == user.id for p in game['players_info']):
             return
         if len(game['players_info']) >= 2:
@@ -2508,7 +2508,18 @@ async def handle_typing_attempt(update: Update, context: ContextTypes.DEFAULT_TY
 # (منطق این بازی‌ها عمدتاً بدون تغییر است، فقط نحوه شروع آنها از پنل اضافه شده)
 async def gharch_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    await query.answer()
+    user = query.from_user
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+        return
+
+    if user.id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+        await query.answer()
     
     if await check_ban_status(update, context): return ConversationHandler.END
 
@@ -2619,7 +2630,18 @@ async def cancel_gharch_conv(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
 async def eteraf_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    user = query.from_user
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+        return
+
+    if user.id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+        await query.answer()
 
     if await check_ban_status(update, context): return
     

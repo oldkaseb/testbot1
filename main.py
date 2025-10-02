@@ -157,26 +157,6 @@ TYPING_SENTENCES = [
     "خلیج فارس یکی از مهمترین آبراه های استراتژیک جهان به شمار میرود", "راز تغییر کردن در این است که تمام انرژی خود را روی ساختن عادت های جدید بگذاری"
 ]
 
-# --- ثابت‌ها و ساختارهای بازی تتریس ---
-BOARD_WIDTH, BOARD_HEIGHT = 14, 20
-EMPTY_CELL = "▪️"  # کاراکتر نامرئی Zero-Width Space
-FILLED_CELL = "⬛️"
-
-# تعریف شکل‌ها و چرخش‌های هر قطعه
-PIECE_SHAPES = {
-    'I': [[[1, 1, 1, 1]], [[1], [1], [1], [1]]],
-    'O': [[[1, 1], [1, 1]]],
-    'T': [[[0, 1, 0], [1, 1, 1]], [[1, 0], [1, 1], [1, 0]], [[1, 1, 1], [0, 1, 0]], [[0, 1], [1, 1], [0, 1]]],
-    'S': [[[0, 1, 1], [1, 1, 0]], [[1, 0], [1, 1], [0, 1]]],
-    'Z': [[[1, 1, 0], [0, 1, 1]], [[0, 1], [1, 1], [1, 0]]],
-    'J': [[[1, 0, 0], [1, 1, 1]], [[1, 1], [1, 0], [1, 0]], [[1, 1, 1], [0, 0, 1]], [[0, 1], [0, 1], [1, 1]]],
-    'L': [[[0, 0, 1], [1, 1, 1]], [[1, 0], [1, 0], [1, 1]], [[1, 1, 1], [1, 0, 0]], [[1, 1], [0, 1], [0, 1]]]
-}
-
-PIECE_COLORS = {
-    'I': '🟦', 'O': '🟨', 'T': '🟪', 'S': '🟩', 'Z': '🟥', 'J': '🟧', 'L': '🟫'
-}
-
 SAMEGAME_WIDTH, SAMEGAME_HEIGHT = 10, 10
 SAMEGAME_COLORS = ["🟥", "🟩", "🟦", "🟨", "🟪"]
 
@@ -1852,17 +1832,40 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
+import random
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import ContextTypes
+from telegram.constants import ParseMode
+
+# --- ثابت‌ها و ساختارهای بازی تتریس (بسیار مهم: باید قبل از توابع تعریف شوند) ---
+BOARD_WIDTH, BOARD_HEIGHT = 14, 20
+EMPTY_CELL = "▪️"
+
+# تعریف شکل‌ها و چرخش‌های هر قطعه
+PIECE_SHAPES = {
+    'I': [[[1, 1, 1, 1]], [[1], [1], [1], [1]]],
+    'O': [[[1, 1], [1, 1]]],
+    'T': [[[0, 1, 0], [1, 1, 1]], [[1, 0], [1, 1], [1, 0]], [[1, 1, 1], [0, 1, 0]], [[0, 1], [1, 1], [0, 1]]],
+    'S': [[[0, 1, 1], [1, 1, 0]], [[1, 0], [1, 1], [0, 1]]],
+    'Z': [[[1, 1, 0], [0, 1, 1]], [[0, 1], [1, 1], [1, 0]]],
+    'J': [[[1, 0, 0], [1, 1, 1]], [[1, 1], [1, 0], [1, 0]], [[1, 1, 1], [0, 0, 1]], [[0, 1], [0, 1], [1, 1]]],
+    'L': [[[0, 0, 1], [1, 1, 1]], [[1, 0], [1, 0], [1, 1]], [[1, 1, 1], [1, 0, 0]], [[1, 1], [0, 1], [0, 1]]]
+}
+
+PIECE_COLORS = {
+    'I': '🟦', 'O': '🟨', 'T': '🟪', 'S': '🟩', 'Z': '🟥', 'J': '🟧', 'L': '🟫'
+}
+
+# --- توابع کمکی تتریس ---
+
 def create_new_piece():
-    """یک قطعه جدید به صورت تصادفی انتخاب می‌کند."""
     shape_name = random.choice(list(PIECE_SHAPES.keys()))
     return { 'shape_name': shape_name, 'rotation': 0, 'x': BOARD_WIDTH // 2 - 2, 'y': 0 }
 
 def get_piece_matrix(piece):
-    """ماتریکس شکل فعلی قطعه را بر اساس چرخش آن برمی‌گرداند."""
     return PIECE_SHAPES[piece['shape_name']][piece['rotation']]
 
 def is_valid_position(board, piece):
-    """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر."""
     piece_matrix = get_piece_matrix(piece)
     for r, row in enumerate(piece_matrix):
         for c, cell in enumerate(row):
@@ -1873,18 +1876,15 @@ def is_valid_position(board, piece):
     return True
 
 def lock_piece(board, piece):
-    """قطعه فعلی را در صفحه بازی قفل می‌کند."""
     piece_matrix = get_piece_matrix(piece)
     color = PIECE_COLORS[piece['shape_name']]
     for r, row in enumerate(piece_matrix):
         for c, cell in enumerate(row):
-            if cell:
-                if 0 <= piece['y'] + r < BOARD_HEIGHT and 0 <= piece['x'] + c < BOARD_WIDTH:
-                    board[piece['y'] + r][piece['x'] + c] = color
+            if cell and 0 <= piece['y'] + r < BOARD_HEIGHT and 0 <= piece['x'] + c < BOARD_WIDTH:
+                board[piece['y'] + r][piece['x'] + c] = color
     return board
 
 def clear_lines(board):
-    """خطوط کامل شده را حذف و امتیاز را محاسبه می‌کند."""
     lines_to_clear = [r for r, row in enumerate(board) if all(cell != EMPTY_CELL for cell in row)]
     if not lines_to_clear:
         return board, 0
@@ -1895,7 +1895,6 @@ def clear_lines(board):
     return new_board, score_map.get(len(lines_to_clear), 0)
 
 async def render_tetris_board(game, is_finished=False):
-    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند."""
     game_id = game['game_id']
     board = [row[:] for row in game['board']]
     score = game['score']
@@ -1906,9 +1905,8 @@ async def render_tetris_board(game, is_finished=False):
         color = PIECE_COLORS[current_piece['shape_name']]
         for r, row in enumerate(piece_matrix):
             for c, cell in enumerate(row):
-                if cell:
-                    if 0 <= current_piece['y'] + r < BOARD_HEIGHT and 0 <= current_piece['x'] + c < BOARD_WIDTH:
-                        board[current_piece['y'] + r][current_piece['x'] + c] = color
+                if cell and 0 <= current_piece['y'] + r < BOARD_HEIGHT and 0 <= current_piece['x'] + c < BOARD_WIDTH:
+                    board[current_piece['y'] + r][current_piece['x'] + c] = color
     
     board_str = "\n".join("".join(row) for row in board)
     text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
@@ -1939,7 +1937,6 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
-        # --- منطق شروع بازی با ویرایش پیام فعلی (روش پایدار) ---
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -1950,27 +1947,35 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await query.edit_message_text("در حال ساخت بازی تتریس...")
 
-        if chat_id not in active_games['tetris']:
-            active_games['tetris'] = {}
-        
-        if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
-            await query.edit_message_text("شما از قبل یک بازی تتریس فعال دارید.")
-            return
+        try:
+            if chat_id not in active_games['tetris']:
+                active_games['tetris'] = {}
+            
+            if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
+                await query.edit_message_text("شما از قبل یک بازی تتریس فعال دارید.")
+                return
 
-        game_id = query.message.message_id
-        game = {
-            "game_id": game_id, "player_id": user.id,
-            "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
-            "current_piece": create_new_piece(), "score": 0, "status": "playing",
-            "is_moving": False
-        }
-        active_games['tetris'][chat_id][game_id] = game
-        
-        text, reply_markup = await render_tetris_board(game)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            game_id = query.message.message_id
+            game = {
+                "game_id": game_id, "player_id": user.id,
+                "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
+                "current_piece": create_new_piece(), "score": 0, "status": "playing",
+                "is_moving": False
+            }
+            active_games['tetris'][chat_id][game_id] = game
+            
+            text, reply_markup = await render_tetris_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        except Exception as e:
+            # مدیریت خطا برای جلوگیری از گیر کردن
+            print(f"CRITICAL ERROR in Tetris start: {e}")
+            await query.edit_message_text("متاسفانه در ساخت بازی خطایی رخ داد. لطفا دوباره تلاش کنید.")
+            # پاک کردن بازی ناقص در صورت وجود
+            if 'game_id' in locals() and chat_id in active_games.get('tetris', {}) and game_id in active_games['tetris'][chat_id]:
+                del active_games['tetris'][chat_id][game_id]
         return
 
-    # --- منطق ادامه بازی (Move, Drop, Close) ---
+    # --- منطق ادامه بازی ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
@@ -1986,23 +1991,17 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
-    if game['status'] != 'playing':
-        return
-
-    if game.get('is_moving', False):
-        await query.answer("کمی صبر کنید...")
+    if game['status'] != 'playing' or game.get('is_moving', False):
         return
         
     game['is_moving'] = True
-    
     try:
         if action == "move":
             direction = data[3]
             piece = game['current_piece']
             
             if direction == 'drop':
-                while is_valid_position(game['board'], piece):
-                    piece['y'] += 1
+                while is_valid_position(game['board'], piece): piece['y'] += 1
                 piece['y'] -= 1
                 game['board'] = lock_piece(game['board'], piece)
                 game['board'], score_inc = clear_lines(game['board'])
@@ -2027,18 +2026,13 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if is_valid_position(game['board'], piece):
                     text, reply_markup = await render_tetris_board(game)
-                    # برای جلوگیری از خطای "Message not modified" فقط در صورت تغییر واقعی ویرایش می‌کنیم
-                    if query.message.text != text or query.message.reply_markup != reply_markup:
-                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 else:
                     piece['x'], piece['rotation'] = original_x, original_rotation
         
         elif action == "close":
             await query.edit_message_text("بازی تتریس بسته شد.")
             del active_games['tetris'][chat_id][game_id]
-
-    except Exception as e:
-        print(f"An error occurred during Tetris game loop: {e}")
     finally:
         if chat_id in active_games.get('tetris', {}) and game_id in active_games['tetris'][chat_id]:
             game['is_moving'] = False

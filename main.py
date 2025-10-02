@@ -581,7 +581,6 @@ async def render_hokm_board(game: dict, context: ContextTypes.DEFAULT_TYPE):
 
 async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer() # << در ابتدای تابع به کلیک پاسخ می‌دهیم
     user = query.from_user
     chat_id = query.message.chat_id
     
@@ -650,7 +649,6 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # --- ساختار جدید با elif ---
     if action == "join":
         if not await check_join_for_alert(update, context):
-            await query.answer("برای پیوستن به بازی ابتدا عضو کانال شوید", show_alert=True)
             return
             
         if any(p['id'] == user.id for p in game['players']):
@@ -661,14 +659,14 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(game['players']) >= max_players:
             await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
             return
-        
+            await query.answer()
         game['players'].append({'id': user.id, 'name': user.first_name})
         num_players = len(game['players'])
 
         if num_players < max_players:
             keyboard = [[InlineKeyboardButton(f"پیوستن به بازی ({num_players}/{max_players})", callback_data=f"hokm_join_{game_id}")]]
             player_names = "، ".join([p['name'] for p in game['players']])
-            await query.edit_message_text(f"بازی حکم منتظر بازیکنان...\n\nبازیکنان فعلی: {player_names}", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(f"بازی حکم منتظر بازیکنان...\n\nبازیکنان فعلی: {player_names}\n\n @RHINOSOUL_TM برای پیوستن عضو کانال شوید", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             p_ids = [p['id'] for p in game['players']]
             game.update({

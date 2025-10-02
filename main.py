@@ -159,6 +159,7 @@ TYPING_SENTENCES = [
 
 SAMEGAME_WIDTH, SAMEGAME_HEIGHT = 10, 10
 SAMEGAME_COLORS = ["🟥", "🟩", "🟦", "🟨", "🟪"]
+EMPTY_CELL = "⬛️" # یا هر اموجی دیگری که برای خانه خالی می‌پسندید
 
 # --- تنظیمات لاگ ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)

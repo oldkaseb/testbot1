@@ -1980,7 +1980,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
             return
         
-        score_increment = (len(group)
+        score_increment = (len(group))
         game['score'] += score_increment
         
         for row, col in group:

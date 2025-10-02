@@ -1966,8 +1966,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id != game.get('player_id'):
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
-        await query.answer()
-
+        
     if action == "click":
         try:
             r, c = int(data[3]), int(data[4])
@@ -1979,6 +1978,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(group) < 2:
             await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
             return
+            await query.answer()
         
         score_increment = len(group)
         game['score'] = score_increment

@@ -1924,8 +1924,8 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
-        await query.answer()
-        # این بخش کد شما مشکلی نداشت و کامل است
+        # ۱. پاسخ به کلیک کاربر اضافه شد
+
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -1941,7 +1941,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی فعال دارید.", show_alert=True)
             return
-
+            await query.answer()
         sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
@@ -1951,11 +1951,12 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text, reply_markup = await render_samegame_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        try: await query.message.delete()
-        except Exception: pass
+        try: 
+            await query.message.delete()
+        except Exception: 
+            pass
         return
 
-    # --- از اینجا به بعد کد اصلاح شده است ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
@@ -1983,10 +1984,8 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
             return
 
-        # ۱. محل صحیح پاسخ به کلیک
         await query.answer()
         
-        # ۲. روش صحیح محاسبه امتیاز
         score_increment = len(group)
         game['score'] += score_increment
         
@@ -2009,7 +2008,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif action == "noop":
         await query.answer("این بازی تمام شده است.", show_alert=True)
-
+        
 # ============================ SAMEGAME CODE (END) ============================
 # ======================== SLIDING PUZZLE CODE (START) - v2 =========================
 

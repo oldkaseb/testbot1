@@ -1056,6 +1056,7 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     user = query.from_user
+    context.chat_data['starter_admin_id'] = query.from_user.id
     data = query.data.split('_')
     try:
         target_user_id = int(data[-1])
@@ -1083,6 +1084,13 @@ async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAUL
     return SELECTING_RANGE
 
 async def receive_range(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    starter_admin_id = context.chat_data.get('starter_admin_id')
+    current_user_id = update.effective_user.id
+
+    # اگر کاربری که پیام داده، همان ادمینی نیست که بازی را شروع کرده، پیام را نادیده بگیر
+    if current_user_id != starter_admin_id:
+        return SELECTING_RANGE # در همان وضعیت باقی بمان و هیچ کاری نکن
+    # --- پایان بخش جدید ---
     chat = update.effective_chat
     try:
         min_str, max_str = convert_persian_to_english_numbers(update.message.text).split('-')
@@ -2539,6 +2547,14 @@ async def gharch_start_callback(update: Update, context: ContextTypes.DEFAULT_TY
     return ASKING_GOD_USERNAME
 
 async def receive_god_username(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    starter_admin_id = context.chat_data.get('starter_admin_id')
+    current_user_id = update.effective_user.id
+
+    # اگر کاربری که پیام داده، همان ادمینی نیست که بازی را شروع کرده، پیام را نادیده بگیر
+    if current_user_id != starter_admin_id:
+        return ASKING_GOD_USERNAME # در همان وضعیت باقی بمان و هیچ کاری نکن
+    # --- پایان بخش جدید ---
+    
     god_username = update.message.text.strip()
     if not god_username.startswith('@'):
         await update.message.reply_text("فرمت اشتباه است. لطفاً یوزرنیم را با @ ارسال کنید.", quote=True)

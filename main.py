@@ -666,7 +666,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if num_players < max_players:
             keyboard = [[InlineKeyboardButton(f"پیوستن به بازی ({num_players}/{max_players})", callback_data=f"hokm_join_{game_id}")]]
             player_names = "، ".join([p['name'] for p in game['players']])
-            await query.edit_message_text(f"بازی حکم منتظر بازیکنان...\n\nبازیکنان فعلی: {player_names}\n\n @RHINOSOUL_TM برای پیوستن عضو کانال شوید", reply_markup=InlineKeyboardMarkup(keyboard))
+            await query.edit_message_text(f"بازی حکم منتظر بازیکنان...\n\nبازیکنان فعلی: {player_names}\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             p_ids = [p['id'] for p in game['players']]
             game.update({
@@ -2281,7 +2281,7 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         active_games['doz4p'][chat_id][game_id] = game
         
-        text = f"بازی دوز چهار نفره توسط {user.mention_html()} ساخته شد! (1/4)\n\n(برای پیوستن به بازی، باید در کانال عضو باشید)"
+        text = f"بازی دوز چهار نفره توسط {user.mention_html()} ساخته شد! (1/4)\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
         await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         
@@ -2319,7 +2319,7 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         if num_players + 1 < 4:
             player_names = "، ".join([p['name'] for p in game['players_info']])
-            text = f"بازی دوز چهار نفره ({num_players + 1}/4)\n\nبازیکنان فعلی: {player_names}"
+            text = f"بازی دوز چهار نفره ({num_players + 1}/4)\n\nبازیکنان فعلی: {player_names}\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)"
             keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         else:

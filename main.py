@@ -1966,6 +1966,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user.id != game.get('player_id'):
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
+        await query.answer()
 
     if action == "click":
         try:
@@ -1980,7 +1981,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         score_increment = len(group)
-        game['score'] += score_increment
+        game['score'] = score_increment
         
         for row, col in group:
             game['board'][row][col] = EMPTY_CELL
@@ -2002,7 +2003,6 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     elif action == "noop":
         await query.answer("این بازی تمام شده است.", show_alert=True)
-        await query.answer()
 
 # ============================ SAMEGAME CODE (END) ============================
 # ======================== SLIDING PUZZLE CODE (START) - v2 =========================

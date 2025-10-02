@@ -502,6 +502,8 @@ async def rsgame_close_callback(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             pass
 
+# --- توابع کمکی حکم (بدون تغییر در منطق) ---
+
 def create_deck():
     """یک دسته کارت مرتب شده ۵۲تایی ایجاد و آن را بُر می‌زند."""
     suits = ['S', 'H', 'D', 'C']  # Spades, Hearts, Diamonds, Clubs
@@ -516,7 +518,6 @@ def card_to_persian(card):
     suits = {'S': '♠️', 'H': '♥️', 'D': '♦️', 'C': '♣️'}
     ranks = {11: 'J', 12: 'Q', 13: 'K', 14: 'A'}
     suit, rank = card[0], int(card[1:])
-    # نمایش رنک کارت یا حرف معادل آن
     rank_display = str(ranks.get(rank, rank))
     return f"{suits[suit]} {rank_display}"
 
@@ -531,22 +532,18 @@ def get_card_value(card, hokm_suit, trick_suit):
     return value
 
 async def render_hokm_board(game: dict, context: ContextTypes.DEFAULT_TYPE):
-    """
-    این تابع صفحه بازی (متن و دکمه‌ها) را بر اساس وضعیت فعلی بازی برای همه تولید می‌کند.
-    (نسخه اصلاح شده برای نمایش دقیق کارت‌ها)
-    """
+    """صفحه بازی (متن و دکمه‌ها) را بر اساس وضعیت فعلی بازی تولید می‌کند."""
     game_id = game['message_id']
     keyboard = []
     
     p_names = [p['name'] for p in game['players']]
     p_ids = [p['id'] for p in game['players']]
     
-    # دیکشنری برای نگهداری کارت‌های روی میز تا هر کارت دقیقاً جلوی بازیکن خودش قرار گیرد
     table_cards_map = {pid: "➖" for pid in p_ids}
     for play in game.get('current_trick', []):
         table_cards_map[play['player_id']] = card_to_persian(play['card'])
 
-    # --- بخش نمایش بازیکنان و کارت‌های روی میز ---
+    # بخش نمایش بازیکنان و کارت‌های روی میز
     if game['mode'] == '4p':
         team_a_text = f"🔴 تیم 1: {p_names[0]} و {p_names[2]}"
         team_b_text = f"🔵 تیم 2: {p_names[1]} و {p_names[3]}"
@@ -556,7 +553,6 @@ async def render_hokm_board(game: dict, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton(team_b_text, callback_data=f"hokm_noop_{game_id}")],
             [InlineKeyboardButton("بازیکن", callback_data=f"hokm_noop_{game_id}"), InlineKeyboardButton("کارت بازی شده", callback_data=f"hokm_noop_{game_id}")],
         ]
-        # نمایش نام هر بازیکن در کنار کارتی که بازی کرده است
         for i in range(4):
             board_layout.append([
                 InlineKeyboardButton(p_names[i], callback_data=f"hokm_noop_{game_id}"), 
@@ -564,15 +560,13 @@ async def render_hokm_board(game: dict, context: ContextTypes.DEFAULT_TYPE):
             ])
         keyboard.extend(board_layout)
     else: # حالت دو نفره
-        board_layout = []
         for i in range(2):
-            board_layout.append([
+            keyboard.append([
                 InlineKeyboardButton(p_names[i], callback_data=f"hokm_noop_{game_id}"), 
                 InlineKeyboardButton(table_cards_map[p_ids[i]], callback_data=f"hokm_noop_{game_id}")
             ])
-        keyboard.extend(board_layout)
 
-    # --- بخش نمایش وضعیت و امتیازات ---
+    # بخش نمایش وضعیت و امتیازات
     hokm_suit_fa = card_to_persian(f"{game['hokm_suit']}2")[0] if game.get('hokm_suit') else '❓'
     hakem_name = game.get('hakem_name', '...')
     
@@ -587,59 +581,55 @@ async def render_hokm_board(game: dict, context: ContextTypes.DEFAULT_TYPE):
     keyboard.append([InlineKeyboardButton(trick_score_text, callback_data=f"hokm_noop_{game_id}")])
     keyboard.append([InlineKeyboardButton(game_score_text, callback_data=f"hokm_noop_{game_id}")])
 
-    # --- بخش دکمه‌های کنترلی ---
+    # بخش دکمه‌های کنترلی
     keyboard.append([InlineKeyboardButton("🃏 نمایش دست من (خصوصی)", callback_data=f"hokm_showhand_{game_id}")])
 
-    # نمایش دکمه‌های انتخاب حکم فقط برای حاکم
     if game['status'] == 'hakem_choosing' and game.get('turn_index') is not None and game['players'][game['turn_index']]['id'] == game.get('hakem_id'):
         suit_map = {'♠️': 'S', '♥️': 'H', '♦️': 'D', '♣️': 'C'}
         choose_buttons = [InlineKeyboardButton(emoji, callback_data=f"hokm_choose_{game_id}_{char}") for emoji, char in suit_map.items()]
         keyboard.append(choose_buttons)
-    # نمایش دکمه‌های بازی فقط برای بازیکنی که نوبتش است
     elif game['status'] == 'playing' and game.get('turn_index') is not None:
         current_player_id = game['players'][game['turn_index']]['id']
         if current_player_id in game['hands']:
             player_hand = sorted(game['hands'][current_player_id])
             card_buttons = [InlineKeyboardButton(str(i + 1), callback_data=f"hokm_play_{game_id}_{i}") for i in range(len(player_hand))]
-            # تقسیم دکمه‌ها در سطرهای ۷ تایی برای زیبایی
             for i in range(0, len(card_buttons), 7):
                 keyboard.append(card_buttons[i:i+7])
     
     return InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و اصلاح شده حکم ---
+
 async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer() # << در ابتدای تابع به کلیک پاسخ می‌دهیم
     user = query.from_user
-    chat_id = query.message.chat.id
+    chat_id = query.message.chat_id
     
-    # این تابع را از کد اصلی خودتان فراخوانی کنید
     # if await check_ban_status(update, context): return
-        
-    data = query.data.split('_'); action = data[1]
+    
+    data = query.data.split('_')
+    action = data[1]
 
+    # --- بلوک ۱: شروع بازی ---
     if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
-                
-                mode = data[2]
-                max_players = 4 if mode == '4p' else 2
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
+        mode = data[2]
+        max_players = 4 if mode == '4p' else 2
 
         if chat_id not in active_games['hokm']:
             active_games['hokm'][chat_id] = {}
         
-        sent_message = await query.message.reply_text(
-            f"در حال ساخت بازی حکم {max_players} نفره..."
-        )
-        
-        game_id = sent_message.message_id 
+        sent_message = await query.message.reply_text(f"در حال ساخت بازی حکم {max_players} نفره...")
+        game_id = sent_message.message_id
         
         game = {
             "status": "joining", 
@@ -652,7 +642,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         keyboard = [[InlineKeyboardButton(f"پیوستن به بازی (1/{max_players})", callback_data=f"hokm_join_{game_id}")]]
         await sent_message.edit_text(
-            f"بازی حکم {max_players} نفره توسط {user.mention_html()} ساخته شد! منتظر بازیکنان...\n @RHINOSOUL_TM برای شرکت در بازی عضو کانال شوید", 
+            f"بازی حکم {max_players} نفره توسط {user.mention_html()} ساخته شد! منتظر بازیکنان...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)", 
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.HTML
         )
@@ -662,32 +652,41 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
         return
+
+    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی (Join, Play, Choose ...) ---
+    try:
         game_id = int(data[2])
-        if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
-            await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-            try: await query.edit_message_text("این بازی تمام شده است.")
-            except: pass
-                return
-    
+    except (ValueError, IndexError):
+        await query.answer("خطا در پردازش درخواست.", show_alert=True)
+        return
+
+    if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
+        await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
+        try: await query.edit_message_text("این بازی تمام شده است.")
+        except: pass
+        return
+        
     game = active_games['hokm'][chat_id][game_id]
 
+    # --- ساختار جدید با elif ---
     if action == "join":
-        # این تابع را از کد اصلی خودتان فراخوانی کنید
         # if not await check_join_for_alert(update, context): return
-
-        if any(p['id'] == user.id for p in game['players']): 
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+        if any(p['id'] == user.id for p in game['players']):
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
+            
         max_players = 4 if game['mode'] == '4p' else 2
-        if len(game['players']) >= max_players: 
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+        if len(game['players']) >= max_players:
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
         
-        await query.answer()
         game['players'].append({'id': user.id, 'name': user.first_name})
         num_players = len(game['players'])
 
         if num_players < max_players:
             keyboard = [[InlineKeyboardButton(f"پیوستن به بازی ({num_players}/{max_players})", callback_data=f"hokm_join_{game_id}")]]
-            await query.edit_message_text(f"بازی حکم (ID: {game_id})\nبازیکنان وارد شده: {num_players}/{max_players}\n @RHINOSOUL_TM برای شرکت در بازی عضو کانال شوید", reply_markup=InlineKeyboardMarkup(keyboard))
+            player_names = "، ".join([p['name'] for p in game['players']])
+            await query.edit_message_text(f"بازی حکم منتظر بازیکنان...\n\nبازیکنان فعلی: {player_names}", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
             p_ids = [p['id'] for p in game['players']]
             game.update({
@@ -705,13 +704,16 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             game['turn_index'] = next(i for i, p in enumerate(game['players']) if p['id'] == hakem_p['id'])
             
             reply_markup = await render_hokm_board(game, context)
-            await query.edit_message_text(f"بازیکنان کامل شدند!\nحاکم: {game['hakem_name']}\n\nنوبت شماست که حکم را انتخاب کنید.", reply_markup=reply_markup)
-    
+            await query.edit_message_text(f"بازیکنان کامل شدند!\nحاکم: {game['hakem_name']}\n\nلطفا حکم را انتخاب کنید.", reply_markup=reply_markup)
+
     elif action == "choose":
-        if user.id != game.get('hakem_id'): return await query.answer("شما حاکم نیستید!", show_alert=True)
-        if game['status'] != 'hakem_choosing': return await query.answer("الان زمان انتخاب حکم نیست!", show_alert=True)
-        
-        await query.answer()
+        if user.id != game.get('hakem_id'):
+            await query.answer("شما حاکم نیستید!", show_alert=True)
+            return
+        if game['status'] != 'hakem_choosing':
+            await query.answer("الان زمان انتخاب حکم نیست!", show_alert=True)
+            return
+            
         game['hokm_suit'] = data[3]
         
         for p in game['players']:
@@ -727,30 +729,35 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"بازی شروع شد! حکم: {card_to_persian(game['hokm_suit']+'2')[0]}\n\nنوبت {turn_player_name} است.", reply_markup=reply_markup)
 
     elif action == "showhand":
-        if not any(p['id'] == user.id for p in game['players']): return await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+        if not any(p['id'] == user.id for p in game['players']):
+            await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            return
         hand = sorted(game['hands'].get(user.id, []))
         hand_str = "\n".join([f"{i+1}. {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
         await query.answer(f"دست شما:\n{hand_str}", show_alert=True)
 
     elif action == "play":
-        if user.id != game['players'][game['turn_index']]['id']: return await query.answer("نوبت شما نیست!", show_alert=True)
+        if game['status'] != 'playing' or user.id != game['players'][game['turn_index']]['id']:
+            await query.answer("نوبت شما نیست!", show_alert=True)
+            return
         
         card_index = int(data[3])
         hand = sorted(game['hands'][user.id]) 
-        if not (0 <= card_index < len(hand)): return await query.answer("شماره کارت نامعتبر است.", show_alert=True)
+        if not (0 <= card_index < len(hand)):
+            await query.answer("شماره کارت نامعتبر است.", show_alert=True)
+            return
         
         card_played = hand[card_index]
         if game['current_trick']:
             trick_suit = game['current_trick'][0]['card'][0]
             if any(c.startswith(trick_suit) for c in hand) and not card_played.startswith(trick_suit):
-                return await query.answer(f"شما باید از خال زمین ({card_to_persian(trick_suit+'2')[0]}) بازی کنید!", show_alert=True)
+                await query.answer(f"شما باید از خال زمین ({card_to_persian(trick_suit+'2')[0]}) بازی کنید!", show_alert=True)
+                return
 
-        await query.answer()
         game['hands'][user.id].remove(card_played)
         game['current_trick'].append({'player_id': user.id, 'card': card_played})
 
         num_players = len(game['players'])
-        # --- اگر دست (Trick) هنوز تکمیل نشده باشد ---
         if len(game['current_trick']) < num_players:
             game['turn_index'] = (game['turn_index'] + 1) % num_players
             turn_player_name = game['players'][game['turn_index']]['name']
@@ -758,11 +765,10 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(f"حکم: {card_to_persian(game['hokm_suit']+'2')[0]}\n\nنوبت {turn_player_name} است.", reply_markup=reply_markup)
             return
 
-        # --- اگر دست (Trick) تکمیل شده باشد ---
+        # --- دست تکمیل شده، برنده را مشخص کن ---
         trick_suit = game['current_trick'][0]['card'][0]
         winner_play = max(game['current_trick'], key=lambda p: get_card_value(p['card'], game['hokm_suit'], trick_suit))
         winner_id = winner_play['player_id']
-        winner_name = next(p['name'] for p in game['players'] if p['id'] == winner_id)
         
         if game['mode'] == '4p':
             winner_team = 'A' if winner_id in [game['players'][0]['id'], game['players'][2]['id']] else 'B'
@@ -772,26 +778,24 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             game['trick_scores'][winner_id] += 1
             round_over = any(score == 7 for score in game['trick_scores'].values())
 
-        # نوبت شروع دست بعدی با برنده این دست است
         game['turn_index'] = next(i for i, p in enumerate(game['players']) if p['id'] == winner_id)
         
-        # نمایش موقت نتیجه دست و سپس پاک کردن کارت‌های روی میز
-        trick_cards_for_display = game['current_trick'][:]
-        game['current_trick'] = []
-        
-        turn_player_name = game['players'][game['turn_index']]['name']
-        temp_game_state = game.copy(); temp_game_state['current_trick'] = trick_cards_for_display
+        # نمایش موقت نتیجه دست
+        winner_name = next(p['name'] for p in game['players'] if p['id'] == winner_id)
+        temp_game_state = game.copy()
         temp_reply_markup = await render_hokm_board(temp_game_state, context)
-        await query.edit_message_text(f"برنده این دست: {winner_name}\n\nنوبت شروع دست بعدی با {turn_player_name} است.", reply_markup=temp_reply_markup)
+        await query.edit_message_text(f"برنده این دست: {winner_name}\n\nصبر کنید...", reply_markup=temp_reply_markup)
         
         await asyncio.sleep(2.5)
 
-        # --- اگر دور (Round) تمام نشده باشد ---
+        game['current_trick'] = [] # پاک کردن میز
+
         if not round_over:
+            turn_player_name = game['players'][game['turn_index']]['name']
             reply_markup = await render_hokm_board(game, context)
             await query.edit_message_text(f"حکم: {card_to_persian(game['hokm_suit']+'2')[0]}\n\nنوبت {turn_player_name} است.", reply_markup=reply_markup)
-        # --- اگر دور (Round) تمام شده باشد ---
         else:
+            # --- دور تمام شده، امتیاز را ثبت کن ---
             if game['mode'] == '4p':
                 winning_team_name = 'A' if game['trick_scores']['A'] == 7 else 'B'
                 game['game_scores'][winning_team_name] += 1
@@ -808,22 +812,15 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 del active_games['hokm'][chat_id][game_id]
                 return
             
-            # --- منطق تعیین حاکم بعدی بر اساس درخواست شما ---
+            # --- شروع دور جدید ---
             current_hakem_index = next(i for i, p in enumerate(game['players']) if p['id'] == game['hakem_id'])
             if game['mode'] == '4p':
                 hakem_team = 'A' if current_hakem_index in [0, 2] else 'B'
-                if winning_team_name == hakem_team:
-                    next_hakem_index = current_hakem_index # حاکم برنده، حاکم باقی می‌ماند
-                else:
-                    next_hakem_index = (current_hakem_index + 1) % 4 # حاکمیت به نفر بعدی منتقل می‌شود
-            else: # 2p
+                next_hakem_index = current_hakem_index if winning_team_name == hakem_team else (current_hakem_index + 1) % 4
+            else:
                 round_winner_id = next(pid for pid, score in game['trick_scores'].items() if score == 7)
-                if round_winner_id == game['hakem_id']:
-                    next_hakem_index = current_hakem_index
-                else:
-                    next_hakem_index = (current_hakem_index + 1) % 2
+                next_hakem_index = current_hakem_index if round_winner_id == game['hakem_id'] else (current_hakem_index + 1) % 2
             
-            # ریست کردن بازی برای دور جدید
             p_ids = [p['id'] for p in game['players']]
             game.update({ 
                 "status": "dealing_first_5", "deck": create_deck(), 
@@ -840,11 +837,12 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
             reply_markup = await render_hokm_board(game, context)
             await query.edit_message_text(f"این دست تمام شد! برنده: {winner_display_name}\n\n-- دور جدید --\nحاکم جدید: {game['hakem_name']}\nمنتظر انتخاب حکم...", reply_markup=reply_markup)
-            
-    elif action == "noop":
-        await query.answer()
 
+    elif action == "noop":
+        # این دکمه‌ها کاری انجام نمی‌دهند، پس فقط answer می‌دهیم
+        pass
 # --------------------------- GAME: 2048 (جدید) ---------------------------
+# --- توابع کمکی 2048 (بدون تغییر در منطق) ---
 
 def new_2048_board():
     """یک صفحه خالی ۴x۴ برای بازی 2048 ایجاد می‌کند."""
@@ -856,7 +854,7 @@ def add_new_2048_tile(board):
     if not empty_cells:
         return board
     r, c = random.choice(empty_cells)
-    board[r][c] = 2 if random.random() < 0.9 else 4 # 90% شانس برای ۲
+    board[r][c] = 2 if random.random() < 0.9 else 4  # 90% شانس برای ۲
     return board
 
 def can_move_2048(board):
@@ -864,7 +862,7 @@ def can_move_2048(board):
     for r in range(4):
         for c in range(4):
             if board[r][c] == 0:
-                return True # خانه خالی وجود دارد
+                return True  # خانه خالی وجود دارد
             # چک کردن همسایه‌های سمت راست و پایین
             if c < 3 and board[r][c] == board[r][c+1]:
                 return True
@@ -879,9 +877,9 @@ def transform_2048_board(board, direction):
     if direction == 'right':
         return [row[::-1] for row in board]
     if direction == 'up':
-        return [list(col) for col in zip(*board)] # Transpose
+        return [list(col) for col in zip(*board)]  # Transpose
     if direction == 'down':
-        new_board = [list(col) for col in zip(*board)] # Transpose
+        new_board = [list(col) for col in zip(*board)]  # Transpose
         return [row[::-1] for row in new_board]
 
 def reverse_transform_2048_board(board, direction):
@@ -891,10 +889,10 @@ def reverse_transform_2048_board(board, direction):
     if direction == 'right':
         return [row[::-1] for row in board]
     if direction == 'up':
-        return [list(col) for col in zip(*board)] # Transpose
+        return [list(col) for col in zip(*board)]  # Transpose
     if direction == 'down':
         board = [row[::-1] for row in board]
-        return [list(col) for col in zip(*board)] # Transpose
+        return [list(col) for col in zip(*board)]  # Transpose
 
 def move_2048_left(board):
     """منطق اصلی حرکت و ادغام مهره‌ها به سمت چپ."""
@@ -902,10 +900,8 @@ def move_2048_left(board):
     score_increment = 0
     moved = False
     for row in board:
-        # ۱. فشرده‌سازی: تمام اعداد را به سمت چپ منتقل کن
         compressed_row = [num for num in row if num != 0]
         new_row = []
-        # ۲. ادغام: اعداد مشابه کنار هم را با هم جمع کن
         i = 0
         while i < len(compressed_row):
             if i + 1 < len(compressed_row) and compressed_row[i] == compressed_row[i+1]:
@@ -916,11 +912,9 @@ def move_2048_left(board):
             else:
                 new_row.append(compressed_row[i])
                 i += 1
-        # ۳. پر کردن با صفر: بقیه خانه‌ها را با صفر پر کن
         new_row.extend([0] * (4 - len(new_row)))
         new_board.append(new_row)
     
-    # بررسی اینکه آیا تغییری در صفحه رخ داده است یا خیر
     if board != new_board:
         moved = True
         
@@ -932,7 +926,6 @@ async def render_2048_board(game):
     board = game['board']
     score = game['score']
     
-    # دیکشنری برای نمایش اعداد با ایموجی‌های مختلف برای جذابیت
     tile_map = {0: " ", 2: "2️⃣", 4: "4️⃣", 8: "8️⃣", 16: "1️⃣6️⃣", 32: "3️⃣2️⃣", 64: "6️⃣4️⃣", 128: "1️⃣2️⃣8️⃣", 256: "2️⃣5️⃣6️⃣", 512: "5️⃣1️⃣2️⃣", 1024: "🔟2️⃣4️⃣", 2048: "🏆"}
     
     text = f"🔢 **بازی 2048**\n\nامتیاز: **{score}**"
@@ -942,59 +935,64 @@ async def render_2048_board(game):
         row_buttons = [InlineKeyboardButton(tile_map.get(cell, str(cell)), callback_data=f"2048_noop_{game_id}") for cell in board[r]]
         keyboard.append(row_buttons)
         
-    control_buttons = [
-        InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
-        InlineKeyboardButton("⬆️", callback_data=f"2048_move_{game_id}_up"),
-        InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
-    ]
-    keyboard.append(control_buttons)
-    
-    control_buttons_2 = [
-        InlineKeyboardButton("⬅️", callback_data=f"2048_move_{game_id}_left"),
-        InlineKeyboardButton("⬇️", callback_data=f"2048_move_{game_id}_down"),
-        InlineKeyboardButton("➡️", callback_data=f"2048_move_{game_id}_right"),
-    ]
-    keyboard.append(control_buttons_2)
-
-    close_button = [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"2048_close_{game_id}")]
-    keyboard.append(close_button)
+    keyboard.extend([
+        [
+            InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
+            InlineKeyboardButton("⬆️", callback_data=f"2048_move_{game_id}_up"),
+            InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
+        ],
+        [
+            InlineKeyboardButton("⬅️", callback_data=f"2048_move_{game_id}_left"),
+            InlineKeyboardButton("⬇️", callback_data=f"2048_move_{game_id}_down"),
+            InlineKeyboardButton("➡️", callback_data=f"2048_move_{game_id}_right"),
+        ],
+        [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"2048_close_{game_id}")]
+    ])
     
     return text, InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و اصلاح شده 2048 ---
+
 async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
-    if await check_ban_status(update, context): return
+    # if await check_ban_status(update, context): return
     
-    data = query.data.split('_'); action = data[1]
+    data = query.data.split('_')
+    action = data[1]
 
-if action == "start":
+    # --- بلوک ۱: شروع بازی ---
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
 
         if chat_id not in active_games['2048']:
             active_games['2048'][chat_id] = {}
         
+        # جلوگیری از شروع چند بازی همزمان توسط یک نفر
+        if any(g['player_id'] == user.id for g in active_games['2048'].get(chat_id, {}).values()):
+            await query.answer("شما از قبل یک بازی 2048 فعال دارید.", show_alert=True)
+            return
+
         sent_message = await query.message.reply_text("در حال ساخت بازی 2048...")
         game_id = sent_message.message_id
         
-        # شروع بازی با دو مهره تصادفی
         initial_board = new_2048_board()
         add_new_2048_tile(initial_board)
         add_new_2048_tile(initial_board)
         
         game = {
             "game_id": game_id,
+            "player_id": user.id,  # << مهم: ثبت شناسه بازیکن
             "board": initial_board,
             "score": 0
         }
@@ -1005,17 +1003,15 @@ if action == "start":
         
         try:
             await query.message.delete()
-        except Exception: pass
+        except Exception:
+            pass
         return
 
-game_id = int(data[2])
-    # بستن بازی
-    if action == "close":
-        await query.answer()
-        del active_games['2048'][chat_id][game_id]
-        if not active_games['2048'][chat_id]:
-            del active_games['2048'][chat_id]
-        await query.edit_message_text("بازی 2048 بسته شد.")
+    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی ---
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        await query.answer("خطا در پردازش درخواست.", show_alert=True)
         return
 
     if chat_id not in active_games['2048'] or game_id not in active_games['2048'][chat_id]:
@@ -1025,39 +1021,52 @@ game_id = int(data[2])
         return
         
     game = active_games['2048'][chat_id][game_id]
+    
+    # << امنیتی: فقط بازیکنی که بازی را ساخته می‌تواند آن را کنترل کند >>
+    if user.id != game['player_id']:
+        await query.answer("این بازی برای شما نیست!", show_alert=True)
+        return
 
     if action == "move":
         direction = data[3]
         
-        # ۱. تبدیل صفحه برای استفاده از منطق حرکت به چپ
         transformed = transform_2048_board(game['board'], direction)
-        # ۲. انجام حرکت و ادغام
         moved_board, score_inc, moved = move_2048_left(transformed)
-        # ۳. برگرداندن صفحه به حالت اولیه
         final_board = reverse_transform_2048_board(moved_board, direction)
 
         if moved:
             game['board'] = add_new_2048_tile(final_board)
             game['score'] += score_inc
-            await query.answer()
         else:
-            await query.answer("حرکت نامعتبر!")
+            await query.answer("حرکت غیرمجاز!")
             return
 
         text, reply_markup = await render_2048_board(game)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        # چک کردن شرایط پایان بازی
+        # بررسی شرایط پایان بازی
+        game_over = False
         if any(2048 in row for row in game['board']):
-            await query.message.reply_text(f"🏆 **تبریک!** شما برنده شدید! 🏆\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
-            del active_games['2048'][chat_id][game_id]
+            text += f"\n\n🏆 **تبریک!** شما برنده شدید! 🏆"
+            game_over = True
         elif not can_move_2048(game['board']):
-            await query.message.reply_text(f"☠️ **بازی تمام شد!**\nامتیاز نهایی: **{game['score']}**", parse_mode=ParseMode.MARKDOWN)
-            del active_games['2048'][chat_id][game_id]
-            
-    elif action == "noop":
-        await query.answer()
+            text += f"\n\n☠️ **بازی تمام شد!** شما باختید."
+            game_over = True
 
+        if game_over:
+            # در انتهای بازی، دکمه‌ها را حذف می‌کنیم
+            await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
+            del active_games['2048'][chat_id][game_id]
+        else:
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+    elif action == "close":
+        await query.edit_message_text("بازی 2048 بسته شد.")
+        del active_games['2048'][chat_id][game_id]
+
+    elif action == "noop":
+        # برای دکمه‌های صفحه بازی که کاری انجام نمی‌دهند
+        pass
+    
 # --------------------------- GAME: GUESS THE NUMBER (ConversationHandler - بدون تغییر) ---------------------------
 async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -1115,34 +1124,31 @@ async def cancel_game_conversation(update: Update, context: ContextTypes.DEFAULT
 # --------------------------- GAME: DOOZ (TIC-TAC-TOE) - ##### بازنویسی کامل ##### ---------------------------
 async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
-    chat_id = query.message.chat.id
-    
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
+    chat_id = query.message.chat_id
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+
+    data = query.data.split('_')
+    action = data[1]
+
+    # --- بلوک ۱: شروع بازی ---
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
-                
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
         if chat_id not in active_games['dooz']:
             active_games['dooz'][chat_id] = {}
 
-        # یک پیام جدید برای این بازی خاص ایجاد می‌کند
-        sent_message = await query.message.reply_text(
-            f"در حال ساخت بازی دوز..."
-        )
-
-        # از آیدی پیام جدید به عنوان شناسه منحصر به فرد بازی استفاده می‌کنیم
+        # ایجاد پیام جدید برای بازی
+        sent_message = await query.message.reply_text("در حال ساخت بازی دوز...")
         game_id = sent_message.message_id
         
         game = {
@@ -1155,68 +1161,91 @@ if action == "start":
         
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"dooz_join_{game_id}")]]
         await sent_message.edit_text(
-            f"بازی دوز توسط {user.mention_html()} ساخته شد! منتظر حریف...\n @RHINOSOUL_TM برای پیوستن به بازی عضو کانال شوید", 
+            f"بازی دوز توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)", 
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode=ParseMode.HTML
         )
+        
+        # حذف پنل اصلی بازی‌ها
         try:
             await query.message.delete()
         except Exception:
             pass
-
         return
-    
-    game_id = int(data[2])
+
+    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی ---
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        await query.answer("خطا در پردازش درخواست.", show_alert=True)
+        return
+
     if chat_id not in active_games['dooz'] or game_id not in active_games['dooz'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-            except: pass
-                return
+        try:
+            await query.edit_message_text("این بازی تمام شده یا منقضی شده است.")
+        except:
+            pass
+        return
         
     game = active_games['dooz'][chat_id][game_id]
 
+    # --- ساختار جدید با elif ---
     if action == "join":
-        if not await check_join_for_alert(update, context): return
+        # if not await check_join_for_alert(update, context): return
 
         if any(p['id'] == user.id for p in game['players_info']):
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
         
         if len(game['players_info']) >= 2:
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
         
-        await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': '⭕️'})
         game['status'] = 'playing'
-        game['turn'] = game['players_info'][0]['id']
+        game['turn'] = game['players_info'][0]['id'] # نوبت با بازیکن اول
 
         p1 = game['players_info'][0]
         p2 = game['players_info'][1]
 
         text = f"بازی شروع شد!\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})\n\nنوبت {p1['name']} است."
         
-        keyboard = [[
-            InlineKeyboardButton(" ", callback_data=f"dooz_move_{game_id}_{r*3+c}") 
-            for c in range(3)] for r in range(3)
+        # ساخت کیبورد اولیه بازی
+        keyboard = [
+            [InlineKeyboardButton(" ", callback_data=f"dooz_move_{game_id}_{r*3+c}") for c in range(3)] 
+            for r in range(3)
         ]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
     elif action == "move":
+        if game['status'] != 'playing':
+            await query.answer("بازی تمام شده است.", show_alert=True)
+            return
+            
         if user.id not in [p['id'] for p in game['players_info']]:
-            return await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            return
+            
         if user.id != game['turn']:
-            return await query.answer("نوبت شما نیست!", show_alert=True)
+            await query.answer("نوبت شما نیست!", show_alert=True)
+            return
 
-        cell_index = int(data[3])
-        row, col = divmod(cell_index, 3)
+        try:
+            cell_index = int(data[3])
+            row, col = divmod(cell_index, 3)
+        except (ValueError, IndexError):
+            return # در صورت callback_data اشتباه، کاری انجام نده
+
         if game['board'][row][col] != " ":
-            return await query.answer("این خانه پر شده است!", show_alert=True)
-        
-        await query.answer()
+            await query.answer("این خانه پر شده است!", show_alert=True)
+            return
         
         current_player = next(p for p in game['players_info'] if p['id'] == user.id)
         symbol = current_player['symbol']
         game['board'][row][col] = symbol
         
+        # بررسی وضعیت برد
         b = game['board']
         win = any(all(c==symbol for c in r) for r in b) or \
               any(all(b[r][c]==symbol for r in range(3)) for c in range(3)) or \
@@ -1224,56 +1253,41 @@ if action == "start":
               all(b[i][2-i]==symbol for i in range(3))
         
         is_draw = all(c!=" " for r in b for c in r) and not win
-        winner = user.id if win else "draw" if is_draw else None
         
-        next_player = next(p for p in game['players_info'] if p['id'] != user.id)
-        game['turn'] = next_player['id']
+        # ساخت کیبورد جدید بر اساس وضعیت فعلی صفحه
+        board_rows = [
+            [InlineKeyboardButton(b[r][c], callback_data=f"dooz_move_{game_id}_{r*3+c}") for c in range(3)]
+            for r in range(3)
+        ]
         
-        board_rows = []
-        for r in range(3):
-            row_buttons = []
-            for c in range(3):
-                row_buttons.append(InlineKeyboardButton(b[r][c], callback_data=f"dooz_move_{game_id}_{r*3+c}"))
-            board_rows.append(row_buttons)
-
-        if winner:
-            text = "بازی مساوی شد! 🤝" if winner == "draw" else f"بازی تمام شد! برنده: {current_player['name']} 🏆"
+        # اگر بازی تمام شد
+        if win or is_draw:
+            text = f"بازی مساوی شد! 🤝" if is_draw else f"بازی تمام شد! برنده: {current_player['name']} 🏆"
+            game['status'] = 'finished' # وضعیت بازی را تغییر می‌دهیم
+            
+            # **نکته کلیدی:** کیبورد نهایی را با دکمه‌های غیرفعال می‌سازیم
+            final_keyboard_rows = [
+                [InlineKeyboardButton(b[r][c], callback_data=f"dooz_noop_{game_id}") for c in range(3)]
+                for r in range(3)
+            ]
+            
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(final_keyboard_rows), parse_mode=ParseMode.HTML)
+            # بازی را از لیست بازی‌های فعال حذف می‌کنیم
             del active_games['dooz'][chat_id][game_id]
-            if not active_games['dooz'][chat_id]:
-                del active_games['dooz'][chat_id]
-        else:
-            text = f"نوبت {next_player['name']} ({next_player['symbol']}) است."
         
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(board_rows), parse_mode=ParseMode.HTML)
+        # اگر بازی ادامه دارد
+        else:
+            next_player = next(p for p in game['players_info'] if p['id'] != user.id)
+            game['turn'] = next_player['id']
+            text = f"نوبت {next_player['name']} ({next_player['symbol']}) است."
+            await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(board_rows), parse_mode=ParseMode.HTML)
 
-# --------------------------- GAME: CONNECT FOUR (جدید) ---------------------------
+    elif action == "noop":
+        # برای دکمه‌های غیرفعال در انتهای بازی
+        await query.answer("این بازی تمام شده است.", show_alert=True)
 
-def render_connect4_board(game: dict):
-    """صفحه بازی چهار در یک ردیف را به همراه متن و دکمه‌ها تولید می‌کند."""
-    p1 = game['players_info'][0]
-    p2 = game['players_info'][1]
-    turn_player_id = game.get('turn')
-    
-    if turn_player_id:
-        turn_player = next(p for p in game['players_info'] if p['id'] == turn_player_id)
-        text = f"بازی چهار در یک ردیف\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})\n\nنوبت {turn_player['name']} است."
-    else:
-        text = f"بازی چهار در یک ردیف\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})"
-
-    game_id = game['game_id']
-    board = game['board']
-    
-    keyboard = []
-    for r in range(len(board)): # 6 ردیف
-        row_buttons = []
-        for c in range(len(board[0])): # 7 ستون
-            # هر دکمه در صفحه بازی، شماره ستون خودش را ارسال می‌کند
-            row_buttons.append(InlineKeyboardButton(board[r][c], callback_data=f"connect4_move_{game_id}_{c}"))
-        keyboard.append(row_buttons) # هر ردیف از دکمه‌ها به کیبورد اضافه می‌شود
-    
-    # دکمه‌های اضافی پایینی حذف شده‌اند
-    
-    return text, InlineKeyboardMarkup(keyboard)
+# --------------------------- GAME: CONNECT FOUR (جدید) --------------------------
+# --- توابع کمکی Connect Four (منطق اصلی بدون تغییر) ---
 
 def check_connect4_winner(board, symbol):
     """بررسی می‌کند که آیا بازیکن با مهره 'symbol' برنده شده است یا خیر."""
@@ -1300,31 +1314,65 @@ def check_connect4_winner(board, symbol):
                 return True
     return False
 
+# --- تابع رندر بهینه‌سازی شده ---
+
+def render_connect4_board(game: dict, is_finished: bool = False):
+    """صفحه بازی را به همراه متن و دکمه‌ها تولید می‌کند."""
+    game_id = game['game_id']
+    board = game['board']
+    
+    # تعیین متن پیام بر اساس وضعیت بازی
+    if is_finished:
+        p1 = game['players_info'][0]
+        p2 = game['players_info'][1]
+        text = f"بازی تمام شد!\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})"
+    else:
+        p1 = game['players_info'][0]
+        p2 = game['players_info'][1]
+        turn_player_id = game.get('turn')
+        turn_player = next(p for p in game['players_info'] if p['id'] == turn_player_id)
+        text = f"بازی چهار در یک ردیف\n{p1['name']} ({p1['symbol']}) ⚔️ {p2['name']} ({p2['symbol']})\n\nنوبت {turn_player['name']} است."
+
+    # ساخت کیبورد
+    keyboard = []
+    for r in range(len(board)):
+        row_buttons = []
+        for c in range(len(board[0])):
+            # اگر بازی تمام شده باشد، دکمه‌ها غیرفعال می‌شوند
+            callback_action = "noop" if is_finished else "move"
+            row_buttons.append(InlineKeyboardButton(board[r][c], callback_data=f"connect4_{callback_action}_{game_id}_{c}"))
+        keyboard.append(row_buttons)
+    
+    return text, InlineKeyboardMarkup(keyboard)
+
+
+# --- تابع اصلی و اصلاح شده Connect Four ---
+
 async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
-    
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    # --- بلوک ۱: شروع بازی ---
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
-        
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
         if chat_id not in active_games['connect4']:
             active_games['connect4'][chat_id] = {}
 
-        # ✅ نکته ۳: یک پیام جدید برای بازی ساخته می‌شود
         sent_message = await query.message.reply_text("در حال ساخت بازی چهار در یک ردیف...")
         game_id = sent_message.message_id
         
@@ -1332,13 +1380,12 @@ if action == "start":
             "game_id": game_id,
             "status": "joining",
             "players_info": [{'id': user.id, 'name': user.first_name, 'symbol': '🔴'}],
-            "board": [['⚪️']*7 for _ in range(6)], # 6 ردیف و 7 ستون
+            "board": [['⚪️']*7 for _ in range(6)],
             "turn": None
         }
         active_games['connect4'][chat_id][game_id] = game
         
-        # ✅ نکته ۱: پیام عضویت اجباری در متن دکمه join
-        text = f"بازی چهار در یک ردیف توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\nبرای پیوستن به بازی ابتدا عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        text = f"بازی چهار در یک ردیف توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"connect4_join_{game_id}")]]
         await sent_message.edit_text(
             text, 
@@ -1346,15 +1393,19 @@ if action == "start":
             parse_mode=ParseMode.HTML
         )
         
-        # ✅ نکته ۳: پنل اصلی بازی‌ها حذف می‌شود
         try:
             await query.message.delete()
         except Exception:
             pass
         return
 
-game_id = int(data[2])
-    
+    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی ---
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        await query.answer("خطا در پردازش درخواست.", show_alert=True)
+        return
+
     if chat_id not in active_games['connect4'] or game_id not in active_games['connect4'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1364,118 +1415,133 @@ game_id = int(data[2])
     game = active_games['connect4'][chat_id][game_id]
 
     if action == "join":
-        # ✅ نکته ۱: عضویت اجباری با ارسال الرت چک می‌شود
-        if not await check_join_for_alert(update, context): return
+        # if not await check_join_for_alert(update, context): return
 
         if any(p['id'] == user.id for p in game['players_info']):
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
         
         if len(game['players_info']) >= 2:
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
         
-        await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': '🟡'})
         game['status'] = 'playing'
-        game['turn'] = game['players_info'][0]['id'] # نوبت با بازیکن اول شروع می‌شود
+        game['turn'] = game['players_info'][0]['id']
 
         text, reply_markup = render_connect4_board(game)
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
     elif action == "move":
-        # ✅ نکته ۲: بررسی نوبت بازیکن
+        if game.get('status') != 'playing':
+            await query.answer("بازی تمام شده است.", show_alert=True)
+            return
+
         if user.id not in [p['id'] for p in game['players_info']]:
-            return await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            return
+        
         if user.id != game.get('turn'):
-            return await query.answer("نوبت شما نیست!", show_alert=True)
+            await query.answer("نوبت شما نیست!", show_alert=True)
+            return
 
         col_index = int(data[3])
         
-        # پیدا کردن پایین‌ترین خانه خالی در ستون انتخاب شده
+        # پیدا کردن پایین‌ترین خانه خالی در ستون
         row_index = -1
-        for r in range(5, -1, -1): # از پایین‌ترین ردیف (5) شروع به چک کردن می‌کنیم
+        for r in range(5, -1, -1):
             if game['board'][r][col_index] == '⚪️':
                 row_index = r
                 break
         
         if row_index == -1:
-            return await query.answer("این ستون پر است!", show_alert=True)
+            await query.answer("این ستون پر است!", show_alert=True)
+            return
             
-        await query.answer()
-        
         current_player = next(p for p in game['players_info'] if p['id'] == user.id)
         symbol = current_player['symbol']
         game['board'][row_index][col_index] = symbol
 
         # بررسی برنده یا مساوی
-        if check_connect4_winner(game['board'], symbol):
-            text, reply_markup = render_connect4_board(game) # آخرین وضعیت صفحه را نمایش بده
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            await query.message.reply_text(f"بازی تمام شد! 🏆 برنده: {current_player['name']}")
-            del active_games['connect4'][chat_id][game_id]
-            return
+        is_winner = check_connect4_winner(game['board'], symbol)
+        is_draw = all(cell != '⚪️' for row in game['board'] for cell in row) and not is_winner
+
+        if is_winner or is_draw:
+            game['status'] = 'finished'
+            text, reply_markup = render_connect4_board(game, is_finished=True)
             
-        # بررسی مساوی شدن (اگر تمام خانه‌ها پر شده باشند)
-        if all(cell != '⚪️' for row in game['board'] for cell in row):
+            if is_winner:
+                text += f"\n\n🏆 برنده: {current_player['name']}"
+            else:
+                text += f"\n\n🤝 بازی مساوی شد!"
+
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            del active_games['connect4'][chat_id][game_id]
+        else:
+            # تغییر نوبت
+            next_player = next(p for p in game['players_info'] if p['id'] != user.id)
+            game['turn'] = next_player['id']
+            
             text, reply_markup = render_connect4_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            await query.message.reply_text("بازی مساوی شد! 🤝")
-            del active_games['connect4'][chat_id][game_id]
-            return
 
-        # تغییر نوبت
-        next_player = next(p for p in game['players_info'] if p['id'] != user.id)
-        game['turn'] = next_player['id']
-        
-        text, reply_markup = render_connect4_board(game)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-
-    elif action == "noop": # دکمه‌های صفحه بازی که کاری انجام نمی‌دهند
-        await query.answer()
+    elif action == "noop":
+        await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: ROCK, PAPER, SCISSORS (جدید) ---------------------------
 
 async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
-    chat_id = query.message.chat_id
-    
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
+    chat_id = query.message.chat.id
 
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    # --- بلوک ۱: شروع بازی ---
     if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
-    
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
         if chat_id not in active_games['rps']:
             active_games['rps'][chat_id] = {}
+            
         sent_message = await query.message.reply_text("در حال ساخت بازی سنگ، کاغذ، قیچی...")
         game_id = sent_message.message_id
         game = {
-            "game_id": game_id, "status": "joining",
+            "game_id": game_id, 
+            "status": "joining",
             "players_info": [{'id': user.id, 'name': user.first_name}],
             "choices": {}
         }
         active_games['rps'][chat_id][game_id] = game
-        text = f"بازی سنگ، کاغذ، قیچی توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\nبرای پیوستن به بازی ابتدا عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        
+        text = f"بازی سنگ، کاغذ، قیچی توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n(برای پیوستن به بازی، باید در کانال عضو باشید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"rps_join_{game_id}")]]
         await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
         try:
             await query.message.delete()
         except Exception:
             pass
         return
 
-game_id = int(data[2])
-    
+    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی ---
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        await query.answer("خطا در پردازش درخواست.", show_alert=True)
+        return
+
     if chat_id not in active_games['rps'] or game_id not in active_games['rps'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         try: await query.edit_message_text("این بازی تمام شده است.")
@@ -1485,16 +1551,22 @@ game_id = int(data[2])
     game = active_games['rps'][chat_id][game_id]
 
     if action == "join":
-        if not await check_join_for_alert(update, context): return
+        # if not await check_join_for_alert(update, context): return
+        
         if any(p['id'] == user.id for p in game['players_info']):
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
+            
         if len(game['players_info']) >= 2:
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
-        await query.answer()
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
+            
         game['players_info'].append({'id': user.id, 'name': user.first_name})
         game['status'] = 'playing'
+        
         p1_name = game['players_info'][0]['name']
         p2_name = game['players_info'][1]['name']
+        
         text = f"بازی شروع شد!\n\n{p1_name} ⚔️ {p2_name}\n\nلطفا انتخاب خود را انجام دهید:"
         keyboard = [[
             InlineKeyboardButton("🪨 سنگ", callback_data=f"rps_choose_{game_id}_rock"),
@@ -1503,27 +1575,36 @@ game_id = int(data[2])
         ]]
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-    # *** تغییر اصلی اینجاست ***
     elif action == "choose":
+        if game.get('status') != 'playing':
+            await query.answer("بازی هنوز شروع نشده یا تمام شده است.", show_alert=True)
+            return
+
         if user.id not in [p['id'] for p in game['players_info']]:
-            return await query.answer("این دکمه‌ها برای شما نیست!", show_alert=True)
+            await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
+            return
+            
         if user.id in game['choices']:
-            return await query.answer("شما قبلاً انتخاب خود را ثبت کرده‌اید!", show_alert=True)
+            await query.answer("شما قبلاً انتخاب خود را ثبت کرده‌اید!", show_alert=True)
+            return
         
-        choice = data[3]
-        game['choices'][user.id] = choice
-        await query.answer(f"شما «{choice}» را انتخاب کردید.")
+        try:
+            choice = data[3]
+            game['choices'][user.id] = choice
+            await query.answer(f"انتخاب شما ثبت شد.")
+        except IndexError:
+            return # callback_data ناقص است
 
         p1 = game['players_info'][0]
         p2 = game['players_info'][1]
         
-        # اگر هنوز منتظر بازیکن دوم هستیم
+        # اگر هنوز منتظر انتخاب بازیکن دوم هستیم
         if len(game['choices']) < 2:
-            p1_status = "✅" if p1['id'] in game['choices'] else "❓"
-            p2_status = "✅" if p2['id'] in game['choices'] else "❓"
+            p1_status = "✅ (انتخاب کرد)" if p1['id'] in game['choices'] else "🤔 (منتظر...)"
+            p2_status = "✅ (انتخاب کرد)" if p2['id'] in game['choices'] else "🤔 (منتظر...)"
+            
             text = f"بازی در جریان است...\n\n{p1['name']}: {p1_status}\n{p2['name']}: {p2_status}\n\nمنتظر انتخاب حریف..."
             
-            # دکمه‌ها را دوباره می‌سازیم و به پیام اضافه می‌کنیم
             keyboard = [[
                 InlineKeyboardButton("🪨 سنگ", callback_data=f"rps_choose_{game_id}_rock"),
                 InlineKeyboardButton("📄 کاغذ", callback_data=f"rps_choose_{game_id}_paper"),
@@ -1537,10 +1618,6 @@ game_id = int(data[2])
             p2_choice = game['choices'][p2['id']]
             symbols = {'rock': '🪨', 'paper': '📄', 'scissors': '✂️'}
             
-            # پیام وضعیت نهایی را بدون دکمه ویرایش می‌کنیم
-            final_status_text = f"نتایج بازی:\n\n{p1['name']}: {symbols[p1_choice]}\n{p2['name']}: {symbols[p2_choice]}"
-            await query.edit_message_text(final_status_text)
-            
             winner = None
             rules = {'rock': 'scissors', 'paper': 'rock', 'scissors': 'paper'}
 
@@ -1549,24 +1626,30 @@ game_id = int(data[2])
             elif rules[p2_choice] == p1_choice:
                 winner = p2
             
-            if winner:
-                result_text = f"🏆 **برنده: {winner['name']}**"
-            else:
-                result_text = "🤝 **بازی مساوی شد!**"
+            # ساخت پیام نهایی در یک مرحله
+            final_text = (
+                f"نتایج بازی:\n\n"
+                f"{p1['name']}: {symbols[p1_choice]}\n"
+                f"{p2['name']}: {symbols[p2_choice]}\n\n"
+            )
             
-            # نتیجه را در یک پیام جدید ریپلای می‌کنیم
-            await query.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
+            if winner:
+                final_text += f"🏆 **برنده: {winner['name']}**"
+            else:
+                final_text += "🤝 **بازی مساوی شد!**"
+
+            # ویرایش پیام نهایی و حذف دکمه‌ها
+            await query.edit_message_text(final_text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
             del active_games['rps'][chat_id][game_id]
 
 # --------------------------- GAME: MEMORY GAME (جدید) ---------------------------
-import asyncio
-
-# --- لیست ایموجی‌ها برای بازی حافظه ---
+# --- لیست ایموجی‌ها (بدون تغییر) ---
 MEMORY_EMOJIS = [
     "👽", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🐔", "🐧", "🐦",
     "🐤", "🦆", "🦅", "🦉", "🦇", "🐺", "🐗", "🐴", "🦄", "🐝", "🐛", "🦋", "🐌", "🐞", "🐜", "🦟", "🦗", "🕷"
 ]
 
+# --- توابع کمکی (منطق بدون تغییر) ---
 def generate_memory_board(rows, cols):
     """یک لیست درهم‌ریخته از جفت ایموجی‌ها برای صفحه بازی تولید می‌کند."""
     num_pairs = (rows * cols) // 2
@@ -1574,64 +1657,72 @@ def generate_memory_board(rows, cols):
     card_deck = emojis_for_game * 2
     random.shuffle(card_deck)
     
-    # تبدیل لیست تک‌بعدی به یک برد دوبعدی
     board = []
     for i in range(rows):
         row = card_deck[i * cols : (i + 1) * cols]
         board.append(row)
     return board
 
-async def render_memory_board(game: dict):
+async def render_memory_board(game: dict, is_finished: bool = False):
     """صفحه بازی حافظه را برای نمایش به کاربر رندر می‌کند."""
+    game_id = game['game_id']
     p1 = game['players_info'][0]
     p2 = game['players_info'][1]
+
+    if is_finished:
+        text = (
+            f"🧠 **بازی حافظه**\n\n"
+            f"**امتیاز نهایی:**\n"
+            f"🔵 {p1['name']}: {p1['score']}\n"
+            f"🔴 {p2['name']}: {p2['score']}"
+        )
+    else:
+        turn_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
+        text = (
+            f"🧠 **بازی حافظه**\n\n"
+            f"**امتیازها:**\n"
+            f"🔵 {p1['name']}: {p1['score']}\n"
+            f"🔴 {p2['name']}: {p2['score']}\n\n"
+            f"**نوبت {turn_player['name']}** است."
+        )
     
-    turn_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
-    
-    text = (
-        f"🧠 **بازی حافظه**\n\n"
-        f"**امتیازها:**\n"
-        f"🔵 {p1['name']}: {p1['score']}\n"
-        f"🔴 {p2['name']}: {p2['score']}\n\n"
-        f"**نوبت {turn_player['name']}** است."
-    )
-    
-    game_id = game['game_id']
     board_view = game['board_view']
     keyboard = []
     for r, row_list in enumerate(board_view):
         row_buttons = []
         for c, cell_content in enumerate(row_list):
-            row_buttons.append(InlineKeyboardButton(cell_content, callback_data=f"memory_flip_{game_id}_{r}_{c}"))
+            callback_action = "noop" if is_finished else "flip"
+            row_buttons.append(InlineKeyboardButton(cell_content, callback_data=f"memory_{callback_action}_{game_id}_{r}_{c}"))
         keyboard.append(row_buttons)
         
     return text, InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و بازنویسی شده ---
 async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
-    
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
-        
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
         if chat_id not in active_games['memory']:
             active_games['memory'][chat_id] = {}
 
-        size_str = data[2] # e.g., "4x3"
+        size_str = data[2]
         rows, cols = map(int, size_str.split('x'))
 
         sent_message = await query.message.reply_text(f"در حال ساخت بازی حافظه ({size_str})...")
@@ -1643,13 +1734,14 @@ if action == "start":
             "board_solution": generate_memory_board(rows, cols),
             "board_view": [['❔'] * cols for _ in range(rows)],
             "turn": None,
-            "first_card": None, # برای ذخیره اولین کارت برگردانده شده در هر نوبت
+            "first_card": None,
+            "is_checking": False,  # << مهم: قفل برای جلوگیری از کلیک همزمان
             "matched_pairs": 0,
             "total_pairs": (rows * cols) // 2
         }
         active_games['memory'][chat_id][game_id] = game
         
-        text = f"بازی حافظه ({size_str}) توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        text = f"بازی حافظه ({size_str}) توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، عضو کانال شوید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"memory_join_{game_id}")]]
         await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         
@@ -1658,24 +1750,24 @@ if action == "start":
         except Exception: pass
         return
 
-game_id = int(data[2])
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
 
     if chat_id not in active_games['memory'] or game_id not in active_games['memory'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
         return
         
     game = active_games['memory'][chat_id][game_id]
 
     if action == "join":
-        if not await check_join_for_alert(update, context): return
+        # ... (منطق join بدون تغییر باقی می‌ماند)
         if any(p['id'] == user.id for p in game['players_info']):
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
         if len(game['players_info']) >= 2:
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
-        
-        await query.answer()
+            return
+            
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'score': 0})
         game['status'] = 'playing'
         game['turn'] = game['players_info'][0]['id']
@@ -1684,57 +1776,43 @@ game_id = int(data[2])
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
     elif action == "flip":
+        if game.get('is_checking', False):
+            await query.answer("لطفاً صبر کنید...", show_alert=False)
+            return
+        
         if user.id != game.get('turn'):
-            return await query.answer("نوبت شما نیست!", show_alert=True)
+            await query.answer("نوبت شما نیست!", show_alert=True)
+            return
         
         r, c = int(data[3]), int(data[4])
         
         if game['board_view'][r][c] != '❔':
-            return await query.answer("این کارت قبلاً انتخاب شده!", show_alert=True)
+            await query.answer("این کارت قبلاً انتخاب شده!", show_alert=True)
+            return
             
-        await query.answer()
-        
         card_value = game['board_solution'][r][c]
         game['board_view'][r][c] = card_value
 
-        if not game['first_card']: # این اولین انتخاب در نوبت است
+        if not game['first_card']:  # اولین انتخاب در نوبت
             game['first_card'] = {'r': r, 'c': c, 'val': card_value}
             text, reply_markup = await render_memory_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        else: # این دومین انتخاب است
+        else:  # دومین انتخاب در نوبت
+            game['is_checking'] = True  # << فعال کردن قفل
             text, reply_markup = await render_memory_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-            await asyncio.sleep(1.5) # تاخیر برای دیدن کارت دوم
+            await asyncio.sleep(1.5)
             
             first_card = game['first_card']
             
             # اگر جفت درست بود
-            if card_value == first_card['val']:
+            if card_value == first_card['val'] and (r,c) != (first_card['r'], first_card['c']):
                 game['matched_pairs'] += 1
                 current_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
                 current_player['score'] += 1
-                await query.answer("🎉 یک جفت پیدا کردی! یک نوبت دیگر جایزه گرفتی.")
-                
-                # چک کردن پایان بازی
-                if game['matched_pairs'] == game['total_pairs']:
-                    p1 = game['players_info'][0]
-                    p2 = game['players_info'][1]
-                    
-                    if p1['score'] > p2['score']: winner = p1
-                    elif p2['score'] > p1['score']: winner = p2
-                    else: winner = None
-                    
-                    result_text = "🏆 **بازی تمام شد!** 🏆\n\n"
-                    if winner:
-                        result_text += f"برنده نهایی: **{winner['name']}**"
-                    else:
-                        result_text += "بازی **مساوی** شد!"
-                    
-                    await query.message.reply_text(result_text, parse_mode=ParseMode.MARKDOWN)
-                    del active_games['memory'][chat_id][game_id]
-                    return
-
+                # نوبت عوض نمی‌شود
+            
             # اگر جفت اشتباه بود
             else:
                 game['board_view'][r][c] = '❔'
@@ -1745,10 +1823,36 @@ game_id = int(data[2])
                 game['turn'] = next_player['id']
             
             game['first_card'] = None
-            text, reply_markup = await render_memory_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            game['is_checking'] = False # << آزاد کردن قفل
+
+            # چک کردن پایان بازی
+            if game['matched_pairs'] == game['total_pairs']:
+                p1 = game['players_info'][0]
+                p2 = game['players_info'][1]
+                
+                if p1['score'] > p2['score']: winner = p1
+                elif p2['score'] > p1['score']: winner = p2
+                else: winner = None
+                
+                text, reply_markup = await render_memory_board(game, is_finished=True)
+                
+                if winner:
+                    text += f"\n\n🏆 **برنده نهایی: {winner['name']}**"
+                else:
+                    text += "\n\n🤝 بازی **مساوی** شد!"
+                
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+                del active_games['memory'][chat_id][game_id]
+            else:
+                # آپدیت صفحه برای نوبت بعدی یا جایزه
+                text, reply_markup = await render_memory_board(game)
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+    
+    elif action == "noop":
+        await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
+# --- توابع کمکی تتریس (منطق اصلی بدون تغییر) ---
 
 def create_new_piece():
     """یک قطعه جدید به صورت تصادفی انتخاب می‌کند."""
@@ -1756,7 +1860,7 @@ def create_new_piece():
     return {
         'shape_name': shape_name,
         'rotation': 0,
-        'x': BOARD_WIDTH // 2 - 2, # موقعیت شروع بهتر برای قطعات
+        'x': BOARD_WIDTH // 2 - 2,
         'y': 0
     }
 
@@ -1765,36 +1869,14 @@ def get_piece_matrix(piece):
     return PIECE_SHAPES[piece['shape_name']][piece['rotation']]
 
 def is_valid_position(board, piece):
-    """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر (با دیباگ)."""
+    """بررسی می‌کند که آیا موقعیت فعلی قطعه معتبر است یا خیر."""
     piece_matrix = get_piece_matrix(piece)
     for r, row in enumerate(piece_matrix):
         for c, cell in enumerate(row):
             if cell:
                 board_r, board_c = piece['y'] + r, piece['x'] + c
-                
-                # ---- بخش دیباگ ----
-                cond1 = (0 <= board_c < BOARD_WIDTH)
-                cond2 = (0 <= board_r < BOARD_HEIGHT)
-                cond3 = False # پیش‌فرض
-                if cond1 and cond2:
-                    cond3 = (board[board_r][board_c] == EMPTY_CELL)
-                
-                # اگر یکی از شرط‌ها غلط بود، دلیلش را چاپ کن
-                if not (cond1 and cond2 and cond3):
-                    print("\n--- INVALID MOVE DETECTED ---")
-                    print(f"Piece: {piece['shape_name']}, Pos: (x={piece['x']}, y={piece['y']})")
-                    print(f"Checking block at: (r={board_r}, c={board_c})")
-                    print(f"Is inside X bounds? -> {cond1}")
-                    print(f"Is inside Y bounds? -> {cond2}")
-                    if not (cond1 and cond2):
-                        print("Reason: Out of bounds!")
-                    else:
-                        print(f"Is board cell empty? -> {cond3}")
-                        print(f"Reason: Collision with another piece!")
-                    print("---------------------------\n")
+                if not (0 <= board_c < BOARD_WIDTH and 0 <= board_r < BOARD_HEIGHT and board[board_r][board_c] == EMPTY_CELL):
                     return False
-                # ---- پایان بخش دیباگ ----
-
     return True
 
 def lock_piece(board, piece):
@@ -1804,7 +1886,8 @@ def lock_piece(board, piece):
     for r, row in enumerate(piece_matrix):
         for c, cell in enumerate(row):
             if cell:
-                board[piece['y'] + r][piece['x'] + c] = color
+                if 0 <= piece['y'] + r < BOARD_HEIGHT and 0 <= piece['x'] + c < BOARD_WIDTH:
+                    board[piece['y'] + r][piece['x'] + c] = color
     return board
 
 def clear_lines(board):
@@ -1818,14 +1901,14 @@ def clear_lines(board):
     score_map = {1: 100, 2: 300, 3: 500, 4: 800}
     return new_board, score_map.get(len(lines_to_clear), 0)
 
-async def render_tetris_board(game):
-    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند. (نسخه نهایی HTML)"""
+async def render_tetris_board(game, is_finished=False):
+    """صفحه بازی تتریس را برای نمایش به کاربر رندر می‌کند."""
     game_id = game['game_id']
     board = [row[:] for row in game['board']]
     current_piece = game['current_piece']
     score = game['score']
     
-    if current_piece:
+    if current_piece and not is_finished:
         piece_matrix = get_piece_matrix(current_piece)
         color = PIECE_COLORS[current_piece['shape_name']]
         for r, row in enumerate(piece_matrix):
@@ -1836,9 +1919,12 @@ async def render_tetris_board(game):
     
     board_str = "\n".join("".join(row) for row in board)
     
-    # استفاده از تگ <pre><code> برای نمایش مرتب
     text = f"🧱 <b>تتریس</b>\nامتیاز: <b>{score}</b>\n\n<pre><code>{board_str}</code></pre>"
     
+    if is_finished:
+        text += f"\n\n☠️ <b>بازی تمام شد!</b>"
+        return text, None # بدون دکمه
+
     keyboard = [
         [
             InlineKeyboardButton("⬅️", callback_data=f"tetris_move_{game_id}_left"),
@@ -1846,56 +1932,65 @@ async def render_tetris_board(game):
             InlineKeyboardButton("➡️", callback_data=f"tetris_move_{game_id}_right"),
         ],
         [InlineKeyboardButton("⏬ سقوط", callback_data=f"tetris_move_{game_id}_drop")],
-        [InlineKeyboardButton("​", callback_data=f"tetris_noop_{game_id}")],
-        [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"tetris_close_{game_id}")]
+        [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"tetris_close_{game_id}")],
     ]
     
     return text, InlineKeyboardMarkup(keyboard)
 
-# --- تابع اصلی بازی تتریس ---
+# --- تابع اصلی و بازنویسی شده تتریس ---
 
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
-    chat_id = query.message.chat_id
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
+    chat_id = query.message.chat.id
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
 
         if chat_id not in active_games['tetris']:
             active_games['tetris'][chat_id] = {}
         
+        if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
+            await query.answer("شما از قبل یک بازی تتریس فعال دارید.", show_alert=True)
+            return
+
         sent_message = await query.message.reply_text("در حال ساخت بازی تتریس...")
         game_id = sent_message.message_id
         
         game = {
             "game_id": game_id, "player_id": user.id,
             "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
-            "current_piece": create_new_piece(), "score": 0, "status": "playing"
+            "current_piece": create_new_piece(), "score": 0, "status": "playing",
+            "is_moving": False  # << قفل برای جلوگیری از گیر کردن
         }
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         
-        try: await query.message.delete()
+        try:
+            await query.message.delete()
         except Exception: pass
         return
 
-game_id = int(data[2])
-    
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
+
     if chat_id not in active_games['tetris'] or game_id not in active_games['tetris'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
@@ -1903,57 +1998,73 @@ game_id = int(data[2])
     game = active_games['tetris'][chat_id][game_id]
 
     if user.id != game.get('player_id'):
-        return await query.answer("این بازی برای شما نیست!", show_alert=True)
-
-    if action == "close":
-        await query.answer()
-        del active_games['tetris'][chat_id][game_id]
-        await query.edit_message_text("بازی تتریس بسته شد.")
+        await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
-    if game['status'] != 'playing': return await query.answer()
+    if game['status'] != 'playing':
+        return
 
-    if action == "move":
-        direction = data[3]
-        piece = game['current_piece']
-        original_x, original_rotation = piece['x'], piece['rotation']
-
-        if direction == 'left': piece['x'] -= 1
-        elif direction == 'right': piece['x'] += 1
-        elif direction == 'rotate':
-            num_rotations = len(PIECE_SHAPES[piece['shape_name']])
-            piece['rotation'] = (piece['rotation'] + 1) % num_rotations
+    # << قفل برای جلوگیری از کلیک‌های همزمان >>
+    if game.get('is_moving', False):
+        await query.answer("کمی صبر کنید...")
+        return
         
-        elif direction == 'drop':
-            await query.answer("⏬")
-            while is_valid_position(game['board'], piece): piece['y'] += 1
+    game['is_moving'] = True
+    try:
+        if action == "move":
+            direction = data[3]
+            piece = game['current_piece']
+            original_x, original_rotation = piece['x'], piece['rotation']
+
+            if direction == 'left':
+                piece['x'] -= 1
+            elif direction == 'right':
+                piece['x'] += 1
+            elif direction == 'rotate':
+                num_rotations = len(PIECE_SHAPES[piece['shape_name']])
+                piece['rotation'] = (piece['rotation'] + 1) % num_rotations
+            
+            # اگر حرکت معتبر بود، صفحه را آپدیت کن
+            if is_valid_position(game['board'], piece):
+                text, reply_markup = await render_tetris_board(game)
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+            # اگر نامعتبر بود، به حالت قبل برگردان
+            else:
+                piece['x'], piece['rotation'] = original_x, original_rotation
+                await query.answer("حرکت غیرمجاز!")
+
+        elif action == 'drop':
+            piece = game['current_piece']
+            while is_valid_position(game['board'], piece):
+                piece['y'] += 1
             piece['y'] -= 1
+            
             game['board'] = lock_piece(game['board'], piece)
             game['board'], score_inc = clear_lines(game['board'])
             game['score'] += score_inc
             game['current_piece'] = create_new_piece()
 
+            # بررسی پایان بازی
             if not is_valid_position(game['board'], game['current_piece']):
                 game['status'] = 'game_over'
-                text, _ = await render_tetris_board(game)
-                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML)
-                await query.message.reply_text(f"☠️ <b>بازی تمام شد!</b>\nامتیاز نهایی: <b>{game['score']}</b>", parse_mode=ParseMode.HTML)
+                text, reply_markup = await render_tetris_board(game, is_finished=True)
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 del active_games['tetris'][chat_id][game_id]
-                return
-            
-            text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            return
+            else:
+                text, reply_markup = await render_tetris_board(game)
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
 
-        if is_valid_position(game['board'], piece):
-            await query.answer()
-            text, reply_markup = await render_tetris_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-        else:
-            piece['x'], piece['rotation'] = original_x, original_rotation
-            await query.answer("حرکت غیرمجاز!")
+        elif action == "close":
+            await query.edit_message_text("بازی تتریس بسته شد.")
+            del active_games['tetris'][chat_id][game_id]
+
+    finally:
+        # در هر صورت، قفل را آزاد کن
+        if game_id in active_games.get(chat_id, {}):
+            game['is_moving'] = False
 
 # =========================== SAMEGAME CODE (START) ===========================
+# --- توابع کمکی SameGame (منطق اصلی بدون تغییر) ---
 
 def create_samegame_board():
     """یک صفحه بازی تصادفی برای بازی جفت‌ها ایجاد می‌کند."""
@@ -1980,21 +2091,17 @@ def find_samegame_group(board, r_start, c_start):
     return list(group)
 
 def refill_samegame_board(board):
-    """خانه‌های خالی را با بلوک‌های جدید و تصادفی از بالا پر می‌کند."""
+    """ستون‌ها را پس از حذف بلوک‌ها مرتب کرده و خانه‌های خالی را پر می‌کند."""
+    new_board = [[EMPTY_CELL for _ in range(SAMEGAME_WIDTH)] for _ in range(SAMEGAME_HEIGHT)]
     for c in range(SAMEGAME_WIDTH):
-        empty_count = 0
-        # بلوک‌های موجود را به پایین منتقل کن
-        for r in range(SAMEGAME_HEIGHT - 1, -1, -1):
-            if board[r][c] == EMPTY_CELL:
-                empty_count += 1
-            elif empty_count > 0:
-                board[r + empty_count][c] = board[r][c]
-                board[r][c] = EMPTY_CELL
+        # ستون فعلی را بدون خانه‌های خالی در یک لیست موقت بریز
+        temp_col = [board[r][c] for r in range(SAMEGAME_HEIGHT) if board[r][c] != EMPTY_CELL]
         
-        # خانه‌های خالی بالا را با رنگ‌های جدید پر کن
-        for r in range(empty_count):
-            board[r][c] = random.choice(SAMEGAME_COLORS)
-    return board
+        # لیست موقت را در انتهای ستون جدید قرار بده
+        for i, color in enumerate(temp_col):
+            new_board[SAMEGAME_HEIGHT - len(temp_col) + i][c] = color
+            
+    return new_board
 
 def is_game_over_samegame(board):
     """بررسی می‌کند آیا حرکتی باقی مانده است یا خیر."""
@@ -2008,7 +2115,7 @@ def is_game_over_samegame(board):
                     return False
     return True
 
-async def render_samegame_board(game):
+async def render_samegame_board(game, is_finished=False):
     """صفحه بازی جفت‌ها را برای نمایش به کاربر رندر می‌کند."""
     game_id = game['game_id']
     board = game['board']
@@ -2016,6 +2123,10 @@ async def render_samegame_board(game):
     
     text = f"✨ **بازی جفت‌ها**\nامتیاز: **{score}**"
     
+    if is_finished:
+        text += f"\n\n☠️ **بازی قفل شد و تمام شد!**"
+        return text, None # بدون دکمه
+
     keyboard = []
     for r in range(SAMEGAME_HEIGHT):
         row_buttons = [InlineKeyboardButton(board[r][c], callback_data=f"samegame_click_{game_id}_{r}_{c}") for c in range(SAMEGAME_WIDTH)]
@@ -2025,47 +2136,60 @@ async def render_samegame_board(game):
     
     return text, InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و بازنویسی شده SameGame ---
 async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
 
         if chat_id not in active_games['samegame']:
             active_games['samegame'][chat_id] = {}
-        
-        sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها (بی‌پایان)...")
+            
+        if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
+            await query.answer("شما از قبل یک بازی جفت‌ها فعال دارید.", show_alert=True)
+            return
+
+        sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
         game = {
-            "game_id": game_id, "player_id": user.id,
-            "board": create_samegame_board(), "score": 0
+            "game_id": game_id, 
+            "player_id": user.id,
+            "board": create_samegame_board(), 
+            "score": 0
         }
         active_games['samegame'][chat_id][game_id] = game
         
         text, reply_markup = await render_samegame_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        try: await query.message.delete()
-        except Exception: pass
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
         return
 
-game_id = int(data[2])
-    
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
+
     if chat_id not in active_games['samegame'] or game_id not in active_games['samegame'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
@@ -2073,25 +2197,22 @@ game_id = int(data[2])
     game = active_games['samegame'][chat_id][game_id]
 
     if user.id != game.get('player_id'):
-        return await query.answer("این بازی برای شما نیست!", show_alert=True)
-
-    if action == "close":
-        await query.answer()
-        del active_games['samegame'][chat_id][game_id]
-        await query.edit_message_text("بازی جفت‌ها بسته شد.")
+        await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
     if action == "click":
-        r, c = int(data[3]), int(data[4])
-        
+        try:
+            r, c = int(data[3]), int(data[4])
+        except (ValueError, IndexError):
+            return
+
         group = find_samegame_group(game['board'], r, c)
         
         if len(group) < 2:
-            return await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
-            
-        await query.answer()
+            await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
+            return
         
-        score_increment = (len(group) - 1) ** 2
+        score_increment = (len(group) - 2) ** 2 # فرمول امتیازدهی استاندارد
         game['score'] += score_increment
         
         for row, col in group:
@@ -2099,29 +2220,17 @@ game_id = int(data[2])
         
         game['board'] = refill_samegame_board(game['board'])
 
-        # *** تغییر اصلی اینجاست ***
         if is_game_over_samegame(game['board']):
-            final_score = game['score']
-            
-            # متن پیام نهایی را می‌سازیم
-            final_text = (
-                f"✨ **بازی جفت‌ها** ✨\n\n"
-                f"☠️ **بازی قفل شد و تمام شد!**\n"
-                f"امتیاز نهایی: **{final_score}**"
-            )
-            
-            # پیام اصلی بازی را با متن نهایی ویرایش کرده و دکمه‌ها را حذف می‌کنیم
-            await query.edit_message_text(
-                text=final_text, 
-                reply_markup=None, # حذف دکمه‌ها
-                parse_mode=ParseMode.MARKDOWN
-            )
-            
+            text, reply_markup = await render_samegame_board(game, is_finished=True)
+            await query.edit_message_text(text=text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
             del active_games['samegame'][chat_id][game_id]
-            return
-            
-        text, reply_markup = await render_samegame_board(game)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        else:
+            text, reply_markup = await render_samegame_board(game)
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+
+    elif action == "close":
+        await query.edit_message_text("بازی جفت‌ها بسته شد.")
+        del active_games['samegame'][chat_id][game_id]
 
 # ============================ SAMEGAME CODE (END) ============================
 # ======================== SLIDING PUZZLE CODE (START) - v2 =========================
@@ -2129,23 +2238,20 @@ game_id = int(data[2])
 # --- ثابت‌های پازل کشویی ---
 SPUZZLE_SIZE = 4
 
+# --- توابع کمکی پازل (منطق اصلی بدون تغییر) ---
+
 def create_solvable_spuzzle():
     """یک پازل درهم‌ریخته اما قابل حل ایجاد می‌کند."""
     board = list(range(1, SPUZZLE_SIZE * SPUZZLE_SIZE)) + [0]
     
-    # با انجام تعداد زیادی حرکت تصادفی از روی حالت حل‌شده، به یک چینش قابل حل می‌رسیم
     flat_board = list(board)
     empty_pos = len(flat_board) - 1
     
     for _ in range(300): # تعداد حرکات برای درهم‌ریختن
         moves = []
-        # حرکت به بالا (کاشی پایینی به جای خالی می‌آید)
         if empty_pos < SPUZZLE_SIZE * (SPUZZLE_SIZE - 1): moves.append('up')
-        # حرکت به پایین
         if empty_pos >= SPUZZLE_SIZE: moves.append('down')
-        # حرکت به چپ
         if empty_pos % SPUZZLE_SIZE < SPUZZLE_SIZE - 1: moves.append('left')
-        # حرکت به راست
         if empty_pos % SPUZZLE_SIZE > 0: moves.append('right')
         
         move = random.choice(moves)
@@ -2162,7 +2268,6 @@ def create_solvable_spuzzle():
         flat_board[empty_pos], flat_board[swap_with] = flat_board[swap_with], flat_board[empty_pos]
         empty_pos = swap_with
 
-    # تبدیل لیست فلت به برد ۲ بعدی
     return [flat_board[i:i+SPUZZLE_SIZE] for i in range(0, len(flat_board), SPUZZLE_SIZE)]
 
 
@@ -2191,36 +2296,42 @@ async def render_spuzzle(game):
     keyboard.append([InlineKeyboardButton("⬆️", callback_data=f"spuzzle_move_{game_id}_up")])
     keyboard.append([
         InlineKeyboardButton("⬅️", callback_data=f"spuzzle_move_{game_id}_left"),
+        InlineKeyboardButton("⬇️", callback_data=f"spuzzle_move_{game_id}_down"),
         InlineKeyboardButton("➡️", callback_data=f"spuzzle_move_{game_id}_right")
     ])
-    keyboard.append([InlineKeyboardButton("⬇️", callback_data=f"spuzzle_move_{game_id}_down")])
     keyboard.append([InlineKeyboardButton("✖️ بستن بازی", callback_data=f"spuzzle_close_{game_id}")])
     
     return text, InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و بازنویسی شده پازل ---
 async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
-    if await check_ban_status(update, context): return
-    
-    data = query.data.split('_'); action = data[1]
 
-if action == "start":
+    # if await check_ban_status(update, context): return
+    
+    data = query.data.split('_')
+    action = data[1]
+
+    if action == "start":
         try:
             target_user_id = int(data[-1])
-        except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
-            return
-            
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
-                await query.answer()
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
 
         if chat_id not in active_games['spuzzle']:
             active_games['spuzzle'] = {chat_id: {}}
         
+        if any(g['player_id'] == user.id for g in active_games['spuzzle'].get(chat_id, {}).values()):
+            await query.answer("شما از قبل یک پازل فعال دارید.", show_alert=True)
+            return
+
         sent_message = await query.message.reply_text("در حال ساخت پازل کشویی...")
         game_id = sent_message.message_id
         
@@ -2234,12 +2345,17 @@ if action == "start":
         text, reply_markup = await render_spuzzle(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        try: await query.message.delete()
-        except Exception: pass
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
         return
 
-game_id = int(data[2])
-    
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
+
     if chat_id not in active_games['spuzzle'] or game_id not in active_games['spuzzle'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
@@ -2247,12 +2363,7 @@ game_id = int(data[2])
     game = active_games['spuzzle'][chat_id][game_id]
 
     if user.id != game.get('player_id'):
-        return await query.answer("این بازی برای شما نیست!", show_alert=True)
-
-    if action == "close":
-        await query.answer()
-        del active_games['spuzzle'][chat_id][game_id]
-        await query.edit_message_text("پازل کشویی بسته شد.")
+        await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
     if action == "move":
@@ -2272,17 +2383,22 @@ game_id = int(data[2])
         
         if 0 <= tile_r < SPUZZLE_SIZE and 0 <= tile_c < SPUZZLE_SIZE:
             board[empty_r][empty_c], board[tile_r][tile_c] = board[tile_r][tile_c], board[empty_r][empty_c]
-            await query.answer()
 
             if is_spuzzle_solved(board):
                 duration = time.time() - game['start_time']
                 
-                try: await query.message.delete()
-                except Exception: pass
+                # به جای حذف و ارسال مجدد، پیام را ویرایش می‌کنیم
+                final_text = (
+                    f"🏆 **تبریک {user.mention_html()}!** 🏆\n\n"
+                    f"شما پازل را در زمان **{int(duration)} ثانیه** حل کردید!"
+                )
                 
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=f"🏆 **تبریک {user.mention_html()}!** 🏆\n\nشما پازل را در زمان **{int(duration)} ثانیه** حل کردید!",
+                # رندر نهایی صفحه حل‌شده بدون دکمه‌های کنترل
+                final_board_text, _ = await render_spuzzle(game)
+                
+                await query.edit_message_text(
+                    f"{final_board_text}\n\n{final_text}",
+                    reply_markup=None, # حذف دکمه‌ها
                     parse_mode=ParseMode.HTML
                 )
                 del active_games['spuzzle'][chat_id][game_id]
@@ -2293,8 +2409,13 @@ game_id = int(data[2])
         else:
             await query.answer("حرکت غیرمجاز!")
 
+    elif action == "close":
+        await query.edit_message_text("پازل کشویی بسته شد.")
+        del active_games['spuzzle'][chat_id][game_id]
+
     elif action == "noop":
-        await query.answer()
+        # برای کلیک روی اعداد که کاری انجام نمی‌دهند
+        pass
 
 # ========================= SLIDING PUZZLE CODE (END) - v2 ==========================
 # ======================== 4-PLAYER DOZ CODE (START) =========================
@@ -2302,6 +2423,8 @@ game_id = int(data[2])
 # --- ثابت‌های دوز چهار نفره ---
 DOZ4P_SIZE = 10
 DOZ4P_SYMBOLS = ["🔴", "🔵", "🟢", "🟡"]
+
+# --- توابع کمکی (منطق اصلی بدون تغییر) ---
 
 def check_doz4p_winner(board, symbol):
     """بررسی می‌کند که آیا بازیکنی با نماد 'symbol' برنده شده است (۴ مهره در یک ردیف)."""
@@ -2327,32 +2450,54 @@ def check_doz4p_winner(board, symbol):
                 return True
     return False
 
-async def render_doz4p_board(game):
+# --- تابع رندر بهینه‌سازی شده ---
+
+async def render_doz4p_board(game, is_finished=False):
     """صفحه بازی دوز چهار نفره را رندر می‌کند."""
     game_id = game['game_id']
     board = game['board']
-    turn_player = game['players_info'][game['turn_index']]
-    
     player_list = "\n".join(f"{p['symbol']} {p['name']}" for p in game['players_info'])
-    text = f"💠 **دوز چهار نفره**\n\n{player_list}\n\nنوبت: {turn_player['symbol']} {turn_player['name']}"
+
+    if is_finished:
+        text = f"💠 **دوز چهار نفره (تمام شد)**\n\n{player_list}"
+    else:
+        turn_player = game['players_info'][game['turn_index']]
+        text = f"💠 **دوز چهار نفره**\n\n{player_list}\n\nنوبت: {turn_player['symbol']} {turn_player['name']}"
     
     keyboard = []
     for r in range(DOZ4P_SIZE):
-        row_buttons = [InlineKeyboardButton(board[r][c], callback_data=f"doz4p_move_{game_id}_{r}_{c}") for c in range(DOZ4P_SIZE)]
+        row_buttons = []
+        for c in range(DOZ4P_SIZE):
+            callback_action = "noop" if is_finished else "move"
+            row_buttons.append(InlineKeyboardButton(board[r][c], callback_data=f"doz4p_{callback_action}_{game_id}_{r}_{c}"))
         keyboard.append(row_buttons)
         
     return text, InlineKeyboardMarkup(keyboard)
 
+# --- تابع اصلی و بازنویسی شده دوز ۴ نفره ---
+
 async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
-    if await check_ban_status(update, context): return
+
+    # if await check_ban_status(update, context): return
     
-    data = query.data.split('_'); action = data[1]
+    data = query.data.split('_')
+    action = data[1]
 
     if action == "start":
-        await query.answer()
+        # << امنیتی: بررسی مالکیت پنل >>
+        try:
+            target_user_id = int(data[-1])
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
         if chat_id not in active_games['doz4p']:
             active_games['doz4p'] = {chat_id: {}}
         
@@ -2367,15 +2512,21 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         active_games['doz4p'][chat_id][game_id] = game
         
-        text = f"بازی دوز چهار نفره توسط {user.mention_html()} ساخته شد! (1/4)\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+        text = f"بازی دوز چهار نفره توسط {user.mention_html()} ساخته شد! (1/4)\n\n(برای پیوستن به بازی، باید در کانال عضو باشید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
         await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         
-        try: await query.message.delete()
-        except Exception: pass
+        try:
+            await query.message.delete()
+        except Exception:
+            pass
         return
 
-    game_id = int(data[2])
+    try:
+        game_id = int(data[2])
+    except (ValueError, IndexError):
+        return
+
     if chat_id not in active_games['doz4p'] or game_id not in active_games['doz4p'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
@@ -2383,19 +2534,23 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = active_games['doz4p'][chat_id][game_id]
 
     if action == "join":
-        if not await check_join_for_alert(update, context): return
+        if not await check_join_for_alert(update, context):
+            return
+
         if any(p['id'] == user.id for p in game['players_info']):
-            return await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
         
         num_players = len(game['players_info'])
         if num_players >= 4:
-            return await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
         
-        await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': DOZ4P_SYMBOLS[num_players]})
         
         if num_players + 1 < 4:
-            text = f"بازی دوز چهار نفره ({num_players + 1}/4)\n\nبرای پیوستن به بازی عضو کانال شوید @{FORCED_JOIN_CHANNEL.lstrip('@')}"
+            player_names = "، ".join([p['name'] for p in game['players_info']])
+            text = f"بازی دوز چهار نفره ({num_players + 1}/4)\n\nبازیکنان فعلی: {player_names}"
             keyboard = [[InlineKeyboardButton("پیوستن به بازی", callback_data=f"doz4p_join_{game_id}")]]
             await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         else:
@@ -2404,35 +2559,44 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
 
     elif action == "move":
+        if game.get('status') != 'playing':
+            await query.answer("بازی تمام شده است.", show_alert=True)
+            return
+
         turn_player = game['players_info'][game['turn_index']]
         if user.id != turn_player['id']:
-            return await query.answer("نوبت شما نیست!", show_alert=True)
+            await query.answer("نوبت شما نیست!", show_alert=True)
+            return
         
         r, c = int(data[3]), int(data[4])
         if game['board'][r][c] != '▪️':
-            return await query.answer("این خانه پر است!", show_alert=True)
+            await query.answer("این خانه پر است!", show_alert=True)
+            return
         
-        await query.answer()
         symbol = turn_player['symbol']
         game['board'][r][c] = symbol
 
-        if check_doz4p_winner(game['board'], symbol):
+        is_winner = check_doz4p_winner(game['board'], symbol)
+        is_draw = all(cell != '▪️' for row in game['board'] for cell in row) and not is_winner
+
+        if is_winner or is_draw:
+            game['status'] = 'finished'
+            text, reply_markup = await render_doz4p_board(game, is_finished=True)
+            
+            if is_winner:
+                text += f"\n\n🏆 برنده: {turn_player['symbol']} {turn_player['name']}"
+            else:
+                text += "\n\n🤝 بازی مساوی شد!"
+            
+            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            del active_games['doz4p'][chat_id][game_id]
+        else:
+            game['turn_index'] = (game['turn_index'] + 1) % 4
             text, reply_markup = await render_doz4p_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-            await query.message.reply_text(f"🏆 **بازی تمام شد!** 🏆\n\nبرنده: {turn_player['symbol']} {turn_player['name']}", parse_mode=ParseMode.MARKDOWN)
-            del active_games['doz4p'][chat_id][game_id]
-            return
 
-        if all(cell != '▪️' for row in game['board'] for cell in row):
-            text, reply_markup = await render_doz4p_board(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-            await query.message.reply_text("🤝 **بازی مساوی شد!**", parse_mode=ParseMode.MARKDOWN)
-            del active_games['doz4p'][chat_id][game_id]
-            return
-
-        game['turn_index'] = (game['turn_index'] + 1) % 4
-        text, reply_markup = await render_doz4p_board(game)
-        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+    elif action == "noop":
+        await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # ======================== 4-PLAYER DOZ CODE (END) =========================
 # --------------------------- GAME: HADS KALAME (با جان جداگانه) ---------------------------

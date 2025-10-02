@@ -1852,6 +1852,7 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
+
 def create_new_piece():
     """یک قطعه جدید به صورت تصادفی انتخاب می‌کند."""
     shape_name = random.choice(list(PIECE_SHAPES.keys()))
@@ -1928,9 +1929,10 @@ async def render_tetris_board(game, is_finished=False):
     ]
     return text, InlineKeyboardMarkup(keyboard)
 
-# --- تابع اصلی و بازنویسی شده تتریس ---
+# --- تابع اصلی و بازنویسی شده نهایی تتریس ---
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    # >> نکته کلیدی: answer در همان ابتدا فراخوانی می‌شود <<
     await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
@@ -1939,20 +1941,22 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
-        # ... منطق شروع بازی بدون تغییر ...
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
         except (ValueError, IndexError):
-            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            # چون query.answer() قبلا زده شده، اینجا نیازی به پاسخ نیست
             return
+
         if chat_id not in active_games['tetris']:
             active_games['tetris'] = {}
+            
         if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی تتریس فعال دارید.", show_alert=True)
             return
+
         sent_message = await query.message.reply_text("در حال ساخت بازی تتریس...")
         game_id = sent_message.message_id
         game = {
@@ -1962,8 +1966,10 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "is_moving": False
         }
         active_games['tetris'][chat_id][game_id] = game
+        
         text, reply_markup = await render_tetris_board(game)
         await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+        
         try: await query.message.delete()
         except Exception: pass
         return
@@ -1991,18 +1997,16 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
         
     game['is_moving'] = True
+    
     try:
-        # --- ساختار اصلاح شده برای Action ها ---
         if action == "move":
             direction = data[3]
             piece = game['current_piece']
             
-            # --- منطق سقوط (Drop) ---
             if direction == 'drop':
                 while is_valid_position(game['board'], piece):
                     piece['y'] += 1
                 piece['y'] -= 1
-                
                 game['board'] = lock_piece(game['board'], piece)
                 game['board'], score_inc = clear_lines(game['board'])
                 game['score'] += score_inc
@@ -2010,20 +2014,16 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 if not is_valid_position(game['board'], game['current_piece']):
                     game['status'] = 'game_over'
-                    text, reply_markup = await render_tetris_board(game, is_finished=True)
-                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    text, _ = await render_tetris_board(game, is_finished=True)
+                    await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.HTML)
                     del active_games['tetris'][chat_id][game_id]
                 else:
                     text, reply_markup = await render_tetris_board(game)
                     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-            
-            # --- منطق سایر حرکات ---
             else:
                 original_x, original_rotation = piece['x'], piece['rotation']
-                if direction == 'left':
-                    piece['x'] -= 1
-                elif direction == 'right':
-                    piece['x'] += 1
+                if direction == 'left': piece['x'] -= 1
+                elif direction == 'right': piece['x'] += 1
                 elif direction == 'rotate':
                     num_rotations = len(PIECE_SHAPES[piece['shape_name']])
                     piece['rotation'] = (piece['rotation'] + 1) % num_rotations
@@ -2033,15 +2033,15 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 else:
                     piece['x'], piece['rotation'] = original_x, original_rotation
-                    await query.answer("حرکت غیرمجاز!")
-
+                    # در اینجا answer نمی‌زنیم چون ممکن است باعث تاخیر شود و کاربر سریع کلیک کند
+        
         elif action == "close":
             await query.edit_message_text("بازی تتریس بسته شد.")
             del active_games['tetris'][chat_id][game_id]
 
     finally:
         # در هر صورت، قفل را آزاد کن (مگر اینکه بازی حذف شده باشد)
-        if chat_id in active_games['tetris'] and game_id in active_games['tetris'][chat_id]:
+        if chat_id in active_games.get('tetris', {}) and game_id in active_games['tetris'][chat_id]:
             game['is_moving'] = False
 
 # =========================== SAMEGAME CODE (START) ==========================

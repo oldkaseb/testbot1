@@ -300,7 +300,7 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
     is_member = False
 
-    # بخش بررسی عضویت (بدون تغییر)
+    # بخش بررسی عضویت
     if await is_owner(user_id):
         is_member = True
     else:
@@ -311,11 +311,12 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             is_member = False
 
+    # --- ساختار صحیح و اصلاح شده IF/ELSE ---
+
     if is_member:
+        # ۱. اگر کاربر عضو است، پنل اصلی را نمایش بده
         text = f"🎮 {user.first_name} عزیز، به پنل بازی خوش آمدید.\n\nلطفا دسته بندی مورد نظر خود را انتخاب کنید:"
         
-        # --- بخش اصلی تغییرات اینجاست ---
-        # دکمه‌ها را در یک ساختار دو ستونه می‌چینیم
         keyboard = [
             [
                 InlineKeyboardButton("👤 بازی‌های تک‌نفره", callback_data=f"rsgame_cat_single_{user_id}"),
@@ -327,30 +328,29 @@ async def rsgame_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]
         ]
 
-        # دکمه گردونه شانس در یک ردیف جداگانه برای ادمین‌ها اضافه می‌شود
         if update.effective_chat.type != 'private':
             if await is_group_admin(user_id, chat_id, context):
                 keyboard.append([InlineKeyboardButton("🎡 گردونه شانس (ویژه ادمین)", callback_data=f"gardone_start_{user_id}")])
         
-        # دکمه بستن پنل در انتها
         keyboard.append([InlineKeyboardButton("✖️ بستن پنل", callback_data=f"rsgame_close_{user_id}")])
-        # --- پایان بخش تغییرات ---
+        
+        # بررسی اینکه آیا باید پیام جدید ارسال شود یا پیام قبلی ویرایش شود
+        if update.message:
+            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        elif update.callback_query:
+            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+
+    else:
+        # ۲. اگر کاربر عضو نیست، پنل عضویت را نمایش بده
+        text = "❗️برای استفاده از بازی‌ها، لطفا ابتدا در کانال ما عضو شوید و سپس دکمه «عضو شدم» را بزنید."
+        keyboard = [
+            [InlineKeyboardButton("عضویت در کانال", url=f"https://t.me/{FORCED_JOIN_CHANNEL.lstrip('@')}")],
+            [InlineKeyboardButton("✅ عضو شدم", callback_data="rsgame_check_join")]
+        ]
         
         if update.message:
             await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
         elif update.callback_query:
-            await update.callback_query.answer()
-            await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        else:
-            text = "❗️برای استفاده از بازی‌ها، لطفا ابتدا در کانال ما عضو شوید و سپس دکمه «عضو شدم» را بزنید."
-            keyboard = [
-                [InlineKeyboardButton("عضویت در کانال", url=f"https://t.me/{FORCED_JOIN_CHANNEL.lstrip('@')}")],
-                [InlineKeyboardButton("✅ عضو شدم", callback_data="rsgame_check_join")]
-            ]
-        if update.message:
-            await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
-        elif update.callback_query:
-            await update.callback_query.answer()
             await update.callback_query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def rsgame_check_join_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):

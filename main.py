@@ -1924,6 +1924,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
+        await query.answer()
         # این بخش کد شما مشکلی نداشت و کامل است
         try:
             target_user_id = int(data[-1])

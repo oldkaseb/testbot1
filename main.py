@@ -1049,7 +1049,18 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # --------------------------- GAME: GUESS THE NUMBER (ConversationHandler - بدون تغییر) ---------------------------
 async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
-    await query.answer()
+    user = query.from_user
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+        return
+
+    if user.id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+        await query.answer()
     
     if await check_ban_status(update, context): return ConversationHandler.END
     

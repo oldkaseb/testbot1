@@ -923,8 +923,13 @@ async def render_2048_board(game):
         ],
         [
             InlineKeyboardButton("⬅️", callback_data=f"2048_move_{game_id}_left"),
-            InlineKeyboardButton("⬇️", callback_data=f"2048_move_{game_id}_down"),
+            InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
             InlineKeyboardButton("➡️", callback_data=f"2048_move_{game_id}_right"),
+        ],
+        [
+            InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
+            InlineKeyboardButton("⬇️", callback_data=f"2048_move_{game_id}_down"),
+            InlineKeyboardButton(" ", callback_data=f"2048_noop_{game_id}"),
         ],
         [InlineKeyboardButton("✖️ بستن بازی", callback_data=f"2048_close_{game_id}")]
     ])
@@ -935,7 +940,6 @@ async def render_2048_board(game):
 
 async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -962,7 +966,7 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if any(g['player_id'] == user.id for g in active_games['2048'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی 2048 فعال دارید.", show_alert=True)
             return
-
+            await query.answer()
         sent_message = await query.message.reply_text("در حال ساخت بازی 2048...")
         game_id = sent_message.message_id
         
@@ -1913,7 +1917,6 @@ async def render_samegame_board(game, is_finished=False):
 # --- تابع اصلی و بازنویسی شده SameGame ---
 async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -1936,7 +1939,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی فعال دارید.", show_alert=True)
             return
-
+            await query.answer()
         sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
@@ -2076,7 +2079,6 @@ async def render_spuzzle(game):
 # --- تابع اصلی و بازنویسی شده پازل ---
 async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -2101,7 +2103,7 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(g['player_id'] == user.id for g in active_games['spuzzle'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک پازل فعال دارید.", show_alert=True)
             return
-
+            await query.answer()
         sent_message = await query.message.reply_text("در حال ساخت پازل کشویی...")
         game_id = sent_message.message_id
         

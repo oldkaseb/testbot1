@@ -2452,7 +2452,18 @@ def create_typing_image(text: str) -> io.BytesIO:
 
 async def type_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
+    user = query.from_user
+    data = query.data.split('_')
+    try:
+        target_user_id = int(data[-1])
+    except (ValueError, IndexError):
+        await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+        return
+
+    if user.id != target_user_id:
+        await query.answer("این پنل برای شما نیست!", show_alert=True)
+        return
+        await query.answer()
 
     if await check_ban_status(update, context): return
     

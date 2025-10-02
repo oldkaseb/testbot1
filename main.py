@@ -1852,7 +1852,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
-
 def create_new_piece():
     """یک قطعه جدید به صورت تصادفی انتخاب می‌کند."""
     shape_name = random.choice(list(PIECE_SHAPES.keys()))
@@ -1932,7 +1931,6 @@ async def render_tetris_board(game, is_finished=False):
 # --- تابع اصلی و بازنویسی شده نهایی تتریس ---
 async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    # >> نکته کلیدی: answer در همان ابتدا فراخوانی می‌شود <<
     await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
@@ -1941,24 +1939,25 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
+        # --- منطق شروع بازی با ویرایش پیام فعلی (روش پایدار) ---
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
                 await query.answer("این پنل برای شما نیست!", show_alert=True)
                 return
         except (ValueError, IndexError):
-            # چون query.answer() قبلا زده شده، اینجا نیازی به پاسخ نیست
             return
+
+        await query.edit_message_text("در حال ساخت بازی تتریس...")
 
         if chat_id not in active_games['tetris']:
             active_games['tetris'] = {}
-            
+        
         if any(g['player_id'] == user.id for g in active_games['tetris'].get(chat_id, {}).values()):
-            await query.answer("شما از قبل یک بازی تتریس فعال دارید.", show_alert=True)
+            await query.edit_message_text("شما از قبل یک بازی تتریس فعال دارید.")
             return
 
-        sent_message = await query.message.reply_text("در حال ساخت بازی تتریس...")
-        game_id = sent_message.message_id
+        game_id = query.message.message_id
         game = {
             "game_id": game_id, "player_id": user.id,
             "board": [[EMPTY_CELL] * BOARD_WIDTH for _ in range(BOARD_HEIGHT)],
@@ -1968,18 +1967,16 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active_games['tetris'][chat_id][game_id] = game
         
         text, reply_markup = await render_tetris_board(game)
-        await sent_message.edit_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
-        
-        try: await query.message.delete()
-        except Exception: pass
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         return
 
+    # --- منطق ادامه بازی (Move, Drop, Close) ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
         return
 
-    if chat_id not in active_games['tetris'] or game_id not in active_games['tetris'][chat_id]:
+    if chat_id not in active_games.get('tetris', {}) or game_id not in active_games['tetris'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
         return
         
@@ -2030,17 +2027,19 @@ async def tetris_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 
                 if is_valid_position(game['board'], piece):
                     text, reply_markup = await render_tetris_board(game)
-                    await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
+                    # برای جلوگیری از خطای "Message not modified" فقط در صورت تغییر واقعی ویرایش می‌کنیم
+                    if query.message.text != text or query.message.reply_markup != reply_markup:
+                        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
                 else:
                     piece['x'], piece['rotation'] = original_x, original_rotation
-                    # در اینجا answer نمی‌زنیم چون ممکن است باعث تاخیر شود و کاربر سریع کلیک کند
         
         elif action == "close":
             await query.edit_message_text("بازی تتریس بسته شد.")
             del active_games['tetris'][chat_id][game_id]
 
+    except Exception as e:
+        print(f"An error occurred during Tetris game loop: {e}")
     finally:
-        # در هر صورت، قفل را آزاد کن (مگر اینکه بازی حذف شده باشد)
         if chat_id in active_games.get('tetris', {}) and game_id in active_games['tetris'][chat_id]:
             game['is_moving'] = False
 

@@ -1832,11 +1832,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی تمام شده است.", show_alert=True)
 
 # --------------------------- GAME: TETRIS (جدید) ---------------------------
-import random
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-from telegram.constants import ParseMode
-
 # --- ثابت‌ها و ساختارهای بازی تتریس (بسیار مهم: باید قبل از توابع تعریف شوند) ---
 BOARD_WIDTH, BOARD_HEIGHT = 14, 20
 EMPTY_CELL = "▪️"

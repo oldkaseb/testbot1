@@ -1924,6 +1924,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
+        # این بخش کد شما مشکلی نداشت و کامل است
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -1939,6 +1940,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if any(g['player_id'] == user.id for g in active_games['samegame'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی فعال دارید.", show_alert=True)
             return
+
         sent_message = await query.message.reply_text("در حال ساخت بازی جفت‌ها...")
         game_id = sent_message.message_id
         
@@ -1952,6 +1954,7 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception: pass
         return
 
+    # --- از اینجا به بعد کد اصلاح شده است ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
@@ -1978,15 +1981,17 @@ async def samegame_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(group) < 2:
             await query.answer("باید حداقل دو بلوک همرنگ کنار هم باشند!", show_alert=True)
             return
-            await query.answer()
+
+        # ۱. محل صحیح پاسخ به کلیک
+        await query.answer()
         
+        # ۲. روش صحیح محاسبه امتیاز
         score_increment = len(group)
-        game['score'] = score_increment
+        game['score'] += score_increment
         
         for row, col in group:
             game['board'][row][col] = EMPTY_CELL
         
-        # << فراخوانی تابع جدید برای پر کردن تصادفی >>
         game['board'] = refill_samegame_board_randomly(game['board'])
 
         if is_game_over_samegame(game['board']):

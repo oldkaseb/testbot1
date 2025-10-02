@@ -2678,7 +2678,7 @@ async def eteraf_start_callback(update: Update, context: ContextTypes.DEFAULT_TY
         bot_username = (await context.bot.get_me()).username
         try:
             starter_message = await context.bot.send_message(chat_id, starter_text)
-            keyboard = [[InlineKeyboardButton("🤫 ارسال اعتراف", url=f"https://t.me/{bot_username}?start=eteraf_{chat_id}_{starter_message.message_id}")]]
+            keyboard = [[InlineKeyboardButton("ارسال به صورت ناشناس", url=f"https://t.me/{bot_username}?start=eteraf_{chat_id}_{starter_message.message_id}")]]
             await starter_message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
             await query.message.delete() 
         except Exception as e:
@@ -2687,11 +2687,20 @@ async def eteraf_start_callback(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif eteraf_type == "custom":
         # ##### تغییر جدید: ذخیره آیدی پیام برای حذف در آینده #####
+        context.chat_data['starter_admin_id'] = query.from_user.id
         context.chat_data['eteraf_prompt_message_id'] = query.message.message_id
         await query.edit_message_text("لطفاً متن دلخواه خود را برای شروع اعتراف ارسال کنید.\nبرای لغو /cancel را ارسال کنید.")
         return ENTERING_ETERAF_TEXT
 
 async def receive_eteraf_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # --- بخش جدید برای بررسی شناسه کاربر ---
+    starter_admin_id = context.chat_data.get('starter_admin_id')
+    current_user_id = update.effective_user.id
+
+    # اگر کاربری که پیام داده، همان ادمینی نیست که بازی را شروع کرده، پیام را نادیده بگیر
+    if current_user_id != starter_admin_id:
+        return ENTERING_ETERAF_TEXT # در همین وضعیت منتظر بمان و کاری نکن
+    # --- پایان بخش جدید ---
     custom_text = update.message.text
     chat_id = update.effective_chat.id
     bot_username = (await context.bot.get_me()).username
@@ -2699,7 +2708,7 @@ async def receive_eteraf_text(update: Update, context: ContextTypes.DEFAULT_TYPE
     try:
         # ربات پیام جدید اعتراف را با دکمه ارسال می‌کند
         starter_message = await context.bot.send_message(chat_id, custom_text)
-        keyboard = [[InlineKeyboardButton("🤫 ارسال اعتراف", url=f"https://t.me/{bot_username}?start=eteraf_{chat_id}_{starter_message.message_id}")]]
+        keyboard = [[InlineKeyboardButton("ارسال به صورت ناشناس", url=f"https://t.me/{bot_username}?start=eteraf_{chat_id}_{starter_message.message_id}")]]
         await starter_message.edit_reply_markup(reply_markup=InlineKeyboardMarkup(keyboard))
     except Exception as e:
         logger.error(f"Error in eteraf_command (custom): {e}")

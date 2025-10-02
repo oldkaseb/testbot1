@@ -1115,7 +1115,6 @@ async def cancel_game_conversation(update: Update, context: ContextTypes.DEFAULT
 # --------------------------- GAME: DOOZ (TIC-TAC-TOE) - ##### بازنویسی کامل ##### ---------------------------
 async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat_id
 
@@ -1192,7 +1191,7 @@ async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(game['players_info']) >= 2:
             await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
             return
-        
+            await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': '⭕️'})
         game['status'] = 'playing'
         game['turn'] = game['players_info'][0]['id'] # نوبت با بازیکن اول
@@ -1341,7 +1340,6 @@ def render_connect4_board(game: dict, is_finished: bool = False):
 
 async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -1415,7 +1413,7 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(game['players_info']) >= 2:
             await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
             return
-        
+            await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': '🟡'})
         game['status'] = 'playing'
         game['turn'] = game['players_info'][0]['id']
@@ -1483,7 +1481,6 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -1516,7 +1513,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         }
         active_games['rps'][chat_id][game_id] = game
         
-        text = f"بازی سنگ، کاغذ، قیچی توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n(برای پیوستن به بازی، باید در کانال عضو باشید)"
+        text = f"بازی سنگ، کاغذ، قیچی توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، باید در کانال عضو باشید)"
         keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"rps_join_{game_id}")]]
         await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
         
@@ -1551,7 +1548,7 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if len(game['players_info']) >= 2:
             await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
             return
-            
+            await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name})
         game['status'] = 'playing'
         
@@ -1691,7 +1688,6 @@ async def render_memory_board(game: dict, is_finished: bool = False):
 # --- تابع اصلی و بازنویسی شده ---
 async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -1758,7 +1754,7 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if len(game['players_info']) >= 2:
             return
-            
+            await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'score': 0})
         game['status'] = 'playing'
         game['turn'] = game['players_info'][0]['id']
@@ -2252,7 +2248,6 @@ async def render_doz4p_board(game, is_finished=False):
 
 async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -2319,7 +2314,7 @@ async def doz4p_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if num_players >= 4:
             await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
             return
-        
+            await query.answer()
         game['players_info'].append({'id': user.id, 'name': user.first_name, 'symbol': DOZ4P_SYMBOLS[num_players]})
         
         if num_players + 1 < 4:

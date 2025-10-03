@@ -3326,7 +3326,7 @@ async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             conn.commit()
             logger.info("SUCCESS: Group info was inserted/updated in the database.")
 
-            await chat.send_message("شما به همراهان راینوسول پیوستید\n\n /start برای نصب کلی ربات کافیست این دستور را ارسال کنید\n\n /rsgame سپس با تک دستور ربات پنل بازی ها را باز کنید\n\nسپاس از همراهی شما..."
+            await chat.send_message("شما به همراهان راینوسول پیوستید\n\n /start برای نصب کلی ربات کافیست این دستور را ارسال کنید\n\n /rsgame سپس با تک دستور ربات پنل بازی ها را باز کنید\n\nسپاس از همراهی شما...")
 
             # --- جمع‌آوری اطلاعات کامل برای گزارش ---
             

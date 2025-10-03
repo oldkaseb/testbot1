@@ -3326,9 +3326,7 @@ async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             conn.commit()
             logger.info("SUCCESS: Group info was inserted/updated in the database.")
 
-            # ارسال پیام خوشامدگویی به گروه
-            keyboard = [[InlineKeyboardButton("🎮 نمایش پنل بازی‌ها", callback_data=f"rsgame_cat_main_{chat.id}")]]
-            await chat.send_message("سلام! 👋 من با موفقیت نصب شدم.\nبرای شروع از دستور /rsgame یا دکمه زیر استفاده کنید.", reply_markup=InlineKeyboardMarkup(keyboard))
+            await chat.send_message("شما به همراهان راینوسول پیوستید\n\n /start برای نصب کلی ربات کافیست این دستور را ارسال کنید\n\n /rsgame سپس با تک دستور ربات پنل بازی ها را باز کنید\n\nسپاس از همراهی شما..."
 
             # --- جمع‌آوری اطلاعات کامل برای گزارش ---
             

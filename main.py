@@ -3170,6 +3170,105 @@ async def unban_group_command(update: Update, context: ContextTypes.DEFAULT_TYPE
             await update.message.reply_text(f"گروه `{group_id}` با موفقیت از مسدودیت خارج شد.", parse_mode=ParseMode.MARKDOWN)
     except (ValueError, IndexError):
         await update.message.reply_text("لطفا یک آیدی عددی معتبر برای گروه وارد کنید.")
+
+async def checkgps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    اطلاعات گروه‌های ثبت‌شده در دیتابیس را به‌روزرسانی و یک گزارش کامل ارسال می‌کند.
+    این دستور گروه‌های جدید را کشف نمی‌کند.
+    """
+    if not await is_owner(update.effective_user.id):
+        return
+
+    status_msg = await update.message.reply_text("⏳ لطفاً صبر کنید، در حال بررسی و به‌روزرسانی اطلاعات گروه‌ها...")
+    
+    conn = get_db_connection()
+    if not conn:
+        await status_msg.edit_text("❌ خطا در اتصال به دیتابیس.")
+        return
+
+    updated_count = 0
+    error_count = 0
+    final_report = []
+
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT group_id FROM groups;")
+            group_ids = cur.fetchall()
+        
+        if not group_ids:
+            await status_msg.edit_text("ℹ️ هیچ گروهی در دیتابیس ثبت نشده است.")
+            return
+
+        await status_msg.edit_text(f"✅ تعداد {len(group_ids)} گروه در دیتابیس یافت شد. در حال به‌روزرسانی و تهیه گزارش...")
+
+        for (group_id,) in group_ids:
+            try:
+                # گرفتن اطلاعات جدید از تلگرام
+                chat_info = await context.bot.get_chat(group_id)
+                member_count = await context.bot.get_chat_member_count(group_id)
+                title = chat_info.title
+                
+                # به‌روزرسانی اطلاعات در دیتابیس
+                with conn.cursor() as cur:
+                    cur.execute("UPDATE groups SET title = %s, member_count = %s WHERE group_id = %s;", (title, member_count, group_id))
+                conn.commit()
+                updated_count += 1
+                
+                owner_mention = "نامشخص"
+                try:
+                    admins = await context.bot.get_chat_administrators(group_id)
+                    for admin in admins:
+                        if admin.status == 'creator':
+                            owner_mention = f"[{admin.user.first_name}](tg://user?id={admin.user.id})"
+                            break
+                except Exception:
+                    owner_mention = "خطا در دریافت"
+
+                invite_link_text = "لینک دریافت نشد"
+                try:
+                    link = await context.bot.export_chat_invite_link(group_id)
+                    invite_link_text = f"[ورود به گروه]({link})"
+                except Exception:
+                    pass
+
+                report_text = (
+                    f"📂 **{title}**\n"
+                    f"🆔 `{group_id}`\n"
+                    f"👥 {member_count} نفر | 👑 {owner_mention}\n"
+                    f"🔗 {invite_link_text}"
+                )
+                final_report.append(report_text)
+
+            except Exception as e:
+                error_count += 1
+                # اگر ربات از گروه اخراج شده باشد، آن را از دیتابیس حذف می‌کنیم
+                if "chat not found" in str(e).lower():
+                    with conn.cursor() as cur:
+                        cur.execute("DELETE FROM groups WHERE group_id = %s;", (group_id,))
+                    conn.commit()
+
+            await asyncio.sleep(0.5) # تأخیر برای جلوگیری از محدودیت API
+
+        # ارسال گزارش نهایی
+        if final_report:
+            full_message = "\n\n---\n\n".join(final_report)
+            await status_msg.edit_text(
+                f"📊 **گزارش نهایی گروه‌ها**\n\n"
+                f"{full_message}\n\n"
+                f"--- \n"
+                f"🔄 {updated_count} گروه به‌روزرسانی شد.\n"
+                f"⚠️ {error_count} گروه با خطا مواجه شد (احتمالاً ربات اخراج شده).",
+                parse_mode=ParseMode.MARKDOWN,
+                disable_web_page_preview=True
+            )
+        else:
+            await status_msg.edit_text("گزارشی برای نمایش وجود ندارد. ممکن است ربات از تمام گروه‌ها اخراج شده باشد.")
+
+    except Exception as e:
+        await status_msg.edit_text(f"🚫 بروز خطای غیرمنتظره: {e}")
+    finally:
+        conn.close()
+
 # -----------------
 async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     result = update.chat_member
@@ -3385,6 +3484,7 @@ def main() -> None:
     application.add_handler(CommandHandler("unban_user", unban_user_command, filters=filters.User(OWNER_IDS)))
     application.add_handler(CommandHandler("ban_group", ban_group_command, filters=filters.User(OWNER_IDS)))
     application.add_handler(CommandHandler("unban_group", unban_group_command, filters=filters.User(OWNER_IDS)))
+    application.add_handler(CommandHandler("checkgps", checkgps_command, filters=filters.User(OWNER_IDS)))
 
     # ========================== بخش اصلی تغییرات اینجاست ==========================
     # --- CallbackQueryHandlers ---

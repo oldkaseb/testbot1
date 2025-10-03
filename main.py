@@ -3478,7 +3478,7 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = query.from_user
     data = query.data.split('_')
     
-    # --- بخش امنیتی: بررسی مالکیت پنل (دست‌نخورده و فعال) ---
+    # --- بخش امنیتی (بدون تغییر) ---
     try:
         target_user_id = int(data[-1])
         if user.id != target_user_id:
@@ -3500,7 +3500,7 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
         
     elif action == "main":
-        # منطق دکمه "بازگشت" برای برگشت به منوی اصلی راهنما
+        # ... (این بخش بدون تغییر باقی می‌ماند)
         text = f"راهنمای بازی‌ها برای {user.mention_html()}\n\n" \
                "لطفاً برای مشاهده توضیحات، روی نام هر بازی کلیک کنید:"
         keyboard = [
@@ -3517,9 +3517,12 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
 
     elif action == "game":
-        # نمایش توضیحات یک بازی خاص
-        game_key = data[2]
-        # پیدا کردن نام نمایشی بازی از روی دکمه‌ها (برای عنوان بهتر)
+        # ========== این بخش اصلاح شده است ==========
+        # کلید بازی ممکن است چند بخشی باشد (مثل hads_kalame)
+        # پس تمام بخش‌ها بین 'game' و آیدی عددی را به هم می‌چسبانیم
+        game_key = "_".join(data[2:-1])
+        # ==========================================
+        
         game_name = " ".join(word.capitalize() for word in game_key.replace('_', ' ').split())
         description = GAME_DESCRIPTIONS.get(game_key, "توضیحات این بازی یافت نشد.")
         keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data=f"help_main_{user.id}")]]
@@ -3528,7 +3531,7 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                                       parse_mode=ParseMode.MARKDOWN)
 
     elif action == "cat":
-        # نمایش لیست بازی‌های یک دسته بندی
+        # ... (این بخش بدون تغییر و کامل است) ...
         category = data[2]
         keyboard = []
         text = "لطفا بازی مورد نظر را انتخاب کنید:"
@@ -3544,7 +3547,6 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("بازی حافظه", callback_data=f"help_game_memory_{user.id}")],
             ])
         
-        # --- بخش‌های تکمیل شده ---
         elif category == "single":
             text = "👤 **راهنمای بازی‌های تک‌نفره:**"
             keyboard.extend([
@@ -3568,7 +3570,6 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("قارچ", callback_data=f"help_game_gharch_{user.id}")],
                 [InlineKeyboardButton("گردونه شانس", callback_data=f"help_game_gardone_{user.id}")],
             ])
-        # --- پایان بخش‌های تکمیل شده ---
         
         keyboard.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data=f"help_main_{user.id}")])
         await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)

@@ -3478,7 +3478,7 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = query.from_user
     data = query.data.split('_')
     
-    # --- بخش امنیتی: بررسی مالکیت پنل ---
+    # --- بخش امنیتی: بررسی مالکیت پنل (دست‌نخورده و فعال) ---
     try:
         target_user_id = int(data[-1])
         if user.id != target_user_id:
@@ -3519,9 +3519,11 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
     elif action == "game":
         # نمایش توضیحات یک بازی خاص
         game_key = data[2]
+        # پیدا کردن نام نمایشی بازی از روی دکمه‌ها (برای عنوان بهتر)
+        game_name = " ".join(word.capitalize() for word in game_key.replace('_', ' ').split())
         description = GAME_DESCRIPTIONS.get(game_key, "توضیحات این بازی یافت نشد.")
-        keyboard = [[InlineKeyboardButton("🔙 بازگشت", callback_data=f"help_main_{user.id}")]]
-        await query.edit_message_text(f"📖 **توضیحات بازی {game_key}**:\n\n{description}", 
+        keyboard = [[InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data=f"help_main_{user.id}")]]
+        await query.edit_message_text(f"📖 **توضیحات بازی {game_name}**:\n\n{description}", 
                                       reply_markup=InlineKeyboardMarkup(keyboard), 
                                       parse_mode=ParseMode.MARKDOWN)
 
@@ -3532,7 +3534,7 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         text = "لطفا بازی مورد نظر را انتخاب کنید:"
 
         if category == "board":
-            text = "🏆 راهنمای بازی‌های گروهی:"
+            text = "🏆 **راهنمای بازی‌های گروهی:**"
             keyboard.extend([
                 [InlineKeyboardButton("حکم", callback_data=f"help_game_hokm_{user.id}")],
                 [InlineKeyboardButton("دوز (۲ نفره)", callback_data=f"help_game_dooz_{user.id}")],
@@ -3541,10 +3543,35 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("سنگ کاغذ قیچی", callback_data=f"help_game_rps_{user.id}")],
                 [InlineKeyboardButton("بازی حافظه", callback_data=f"help_game_memory_{user.id}")],
             ])
-        # ... (می‌توانید برای بقیه دسته‌ها نیز به همین شکل دکمه‌ها را اضافه کنید)
         
-        keyboard.append([InlineKeyboardButton("🔙 بازگشت", callback_data=f"help_main_{user.id}")])
-        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+        # --- بخش‌های تکمیل شده ---
+        elif category == "single":
+            text = "👤 **راهنمای بازی‌های تک‌نفره:**"
+            keyboard.extend([
+                [InlineKeyboardButton("2048", callback_data=f"help_game_2048_{user.id}")],
+                [InlineKeyboardButton("پازل کشویی", callback_data=f"help_game_spuzzle_{user.id}")],
+                [InlineKeyboardButton("بازی جفت‌ها", callback_data=f"help_game_samegame_{user.id}")],
+            ])
+
+        elif category == "typing":
+            text = "✍️ **راهنمای بازی‌های تایپی و سرعتی:**"
+            keyboard.extend([
+                [InlineKeyboardButton("حدس کلمه", callback_data=f"help_game_hads_kalame_{user.id}")],
+                [InlineKeyboardButton("تایپ سرعتی", callback_data=f"help_game_type_speed_{user.id}")],
+                [InlineKeyboardButton("حدس عدد", callback_data=f"help_game_hads_addad_{user.id}")],
+            ])
+
+        elif category == "anon":
+            text = "🤫 **راهنمای بازی‌های ناشناس و ادمین:**"
+            keyboard.extend([
+                [InlineKeyboardButton("اعتراف", callback_data=f"help_game_eteraf_{user.id}")],
+                [InlineKeyboardButton("قارچ", callback_data=f"help_game_gharch_{user.id}")],
+                [InlineKeyboardButton("گردونه شانس", callback_data=f"help_game_gardone_{user.id}")],
+            ])
+        # --- پایان بخش‌های تکمیل شده ---
+        
+        keyboard.append([InlineKeyboardButton("🔙 بازگشت به منوی اصلی", callback_data=f"help_main_{user.id}")])
+        await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.MARKDOWN)
 
 async def ping_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

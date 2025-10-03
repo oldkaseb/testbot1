@@ -1380,8 +1380,6 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id not in active_games['hokm'] or game_id not in active_games['hokm'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
         return
         
     game = active_games['hokm'][chat_id][game_id]
@@ -1737,8 +1735,6 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     if chat_id not in active_games['2048'] or game_id not in active_games['2048'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
         return
         
     game = active_games['2048'][chat_id][game_id]
@@ -2146,8 +2142,6 @@ async def connect4_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id not in active_games['connect4'] or game_id not in active_games['connect4'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
         return
         
     game = active_games['connect4'][chat_id][game_id]
@@ -2281,8 +2275,6 @@ async def rps_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id not in active_games['rps'] or game_id not in active_games['rps'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try: await query.edit_message_text("این بازی تمام شده است.")
-        except: pass
         return
         
     game = active_games['rps'][chat_id][game_id]

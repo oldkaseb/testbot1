@@ -2826,7 +2826,6 @@ async def render_spuzzle(game):
 # --- تابع اصلی و بازنویسی شده پازل ---
 async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -2834,6 +2833,7 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     action = data[1]
 
     if action == "start":
+        await query.answer()
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -2857,7 +2857,7 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "game_id": game_id, "player_id": user.id,
             "board": create_solvable_spuzzle(),
             "start_time": time.time(),
-            "is_busy": False
+            "is_busy": False  # ۱. کلید قفل اضافه شد
         }
         active_games['spuzzle'][chat_id][game_id] = game
         
@@ -2873,6 +2873,7 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
+        await query.answer("خطای دکمه.", show_alert=True)
         return
 
     if chat_id not in active_games['spuzzle'] or game_id not in active_games['spuzzle'][chat_id]:
@@ -2885,10 +2886,15 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
+    # ۲. بررسی وضعیت قفل در ابتدای پردازش
     if game.get('is_busy', False):
+        await query.answer("کمی صبر کنید...")
         return
+    
+    await query.answer() # پاسخ اولیه به کلیک
 
     if action == "move":
+        # ۳. اعمال قفل با try...finally
         game['is_busy'] = True
         try:
             direction = data[3]
@@ -2916,6 +2922,7 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"شما پازل را در زمان **{int(duration)} ثانیه** حل کردید!"
                     )
                     
+                    # رندر نهایی صفحه بدون دکمه‌های کنترل
                     final_board_text, _ = await render_spuzzle(game)
                     
                     await query.edit_message_text(
@@ -2924,13 +2931,14 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode=ParseMode.HTML
                     )
                     del active_games['spuzzle'][chat_id][game_id]
-                    return
+                    return # چون بازی تمام شده، زودتر خارج می‌شویم
                 
                 text, reply_markup = await render_spuzzle(game)
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
             else:
                 await query.answer("حرکت غیرمجاز!")
         finally:
+            # آزاد کردن قفل در هر حالتی
             if chat_id in active_games['spuzzle'] and game_id in active_games['spuzzle'][chat_id]:
                 active_games['spuzzle'][chat_id][game_id]['is_busy'] = False
 

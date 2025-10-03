@@ -1678,7 +1678,6 @@ async def render_2048_board(game):
 
 async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
@@ -1686,6 +1685,9 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     action = data[1]
 
     if action == "start":
+        # پاسخ اولیه به کلیک باید اینجا باشد
+        await query.answer()
+        
         try:
             target_user_id = int(data[-1])
             if user.id != target_user_id:
@@ -1744,7 +1746,10 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     if game.get('is_busy', False):
+        await query.answer("کمی صبر کنید...")
         return
+    
+    await query.answer()
 
     if action == "move":
         game['is_busy'] = True
@@ -1787,7 +1792,6 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     elif action == "noop":
         pass
-
 # --------------------------- GAME: GUESS THE NUMBER (ConversationHandler - بدون تغییر) ---------------------------
 async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query

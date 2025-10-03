@@ -1143,7 +1143,7 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
             [InlineKeyboardButton("💠 دوز چهار نفره", callback_data=f"doz4p_start_{user_id}")],
             [InlineKeyboardButton(" چهار در یک ردیف ", callback_data=f"connect4_start_{user_id}")],
             [InlineKeyboardButton(" سنگ کاغذ قیچی ✂️", callback_data=f"rps_start_{user_id}")],
-            [InlineKeyboardButton("🧠 بازی حافظه", callback_data=f"rsgame_cat_memory_{user_id}")],
+            #[InlineKeyboardButton("🧠 بازی حافظه", callback_data=f"rsgame_cat_memory_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
         ]
     elif category == "memory":
@@ -1171,7 +1171,7 @@ async def rsgame_callback_handler(update: Update, context: ContextTypes.DEFAULT_
         text = "👤 لطفا بازی تک‌نفره مورد نظر خود را انتخاب کنید:"
         keyboard = [
             [InlineKeyboardButton("2️⃣0️⃣4️⃣8️⃣", callback_data=f"2048_start_{user_id}")],
-            [InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"spuzzle_start_{user_id}")],
+            #[InlineKeyboardButton("🔢 پازل کشویی", callback_data=f"spuzzle_start_{user_id}")],
             [InlineKeyboardButton("✨ بازی جفت‌ها", callback_data=f"samegame_start_{user_id}")],
             [InlineKeyboardButton(" بازگشت ", callback_data=f"rsgame_cat_main_{user_id}")]
         ]
@@ -2447,7 +2447,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_')
     action = data[1]
 
-    # --- بخش شروع بازی (که در کد قبلی من خالی بود و اینجا اصلاح شده) ---
     if action == "start":
         await query.answer()
         try:
@@ -2491,7 +2490,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             pass
         return
 
-    # --- بخش‌های دیگر بازی ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
@@ -2504,7 +2502,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     game = active_games['memory'][chat_id][game_id]
 
-    # --- بخش پیوستن به بازی (که در کد قبلی من خالی بود و اینجا اصلاح شده) ---
     if action == "join":
         if not await check_join_for_alert(update, context):
             return
@@ -2525,7 +2522,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         return
 
-    # --- بخش اصلی منطق بازی (نسخه کامل و اصلاح شده قبلی) ---
     elif action == "flip":
         if game.get('is_checking', False):
             await query.answer("لطفاً صبر کنید...", show_alert=False)
@@ -2589,7 +2585,8 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += "\n\n🤝 بازی **مساوی** شد!"
                 
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-                del active_games['memory'][chat_id][game_id]
+                if chat_id in active_games['memory']:
+                    del active_games['memory'][chat_id][game_id]
             else:
                 text, reply_markup = await render_memory_board(game)
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)

@@ -3279,10 +3279,6 @@ async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     chat = result.chat
     user = result.from_user # کاربری که ربات را اضافه کرده
     
-    # مطمئن می‌شویم که تغییر وضعیت مربوط به ربات ماست
-    if result.new_chat_member.status in ('member', 'administrator') and result.old_chat_member.status not in ('member', 'administrator'):
-        return
-
     # --- وقتی ربات به گروه اضافه می‌شود ---
     if result.new_chat_member.status in ('member', 'administrator') and result.old_chat_member.status not in ('member', 'administrator'):
         logger.info(f"Bot was added to group: {chat.title} ({chat.id})")

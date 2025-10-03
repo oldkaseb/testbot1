@@ -1450,7 +1450,9 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not any(p['id'] == user.id for p in game['players']):
             await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
             return
-        hand = sorted(game['hands'].get(user.id, []))
+        suit_order = {'S': 0, 'D': 1, 'C': 2, 'H': 3}
+        hand_un_sorted = game['hands'].get(user.id, [])
+        hand = sorted(hand_un_sorted, key=lambda card: (suit_order[card[0]], -int(card[1:])))
         hand_str = "\n".join([f"{NUMBER_EMOJIS[i]} {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
         await query.answer(f"دست شما:\n{hand_str}", show_alert=True)
 
@@ -1460,9 +1462,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         
         card_index = int(data[3])
-        suit_order = {'S': 0, 'D': 1, 'C': 2, 'H': 3}
-        hand_un_sorted = game['hands'].get(user.id, [])
-        hand = sorted(hand_un_sorted, key=lambda card: (suit_order[card[0]], -int(card[1:])))
+        hand = sorted(game['hands'][user.id]) 
         if not (0 <= card_index < len(hand)):
             await query.answer("شماره کارت نامعتبر است.", show_alert=True)
             return

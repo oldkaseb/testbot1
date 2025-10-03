@@ -1925,10 +1925,6 @@ async def dooz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if chat_id not in active_games['dooz'] or game_id not in active_games['dooz'][chat_id]:
         await query.answer("این بازی دیگر فعال نیست.", show_alert=True)
-        try:
-            await query.edit_message_text("این بازی تمام شده یا منقضی شده است.")
-        except:
-            pass
         return
         
     game = active_games['dooz'][chat_id][game_id]

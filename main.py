@@ -3655,6 +3655,7 @@ def main() -> None:
     application.add_handler(CallbackQueryHandler(doz4p_callback, pattern=r'^doz4p_'))
     application.add_handler(CallbackQueryHandler(gardone_callback, pattern=r'^gardone_'))
     # ۳. هندلر عمومی ناوبری در منوها (باید در آخر این بخش باشد)
+    application.add_handler(CallbackQueryHandler(help_panel_callback, pattern=r'^help_'))
     # این هندلر فقط زمانی اجرا می‌شود که هیچ‌کدام از الگوهای اختصاصی‌تر بالا مطابقت نداشته باشند
     application.add_handler(CallbackQueryHandler(rsgame_callback_handler, pattern=r'^rsgame_cat_'))
     

@@ -2447,13 +2447,55 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = query.data.split('_')
     action = data[1]
 
+    # --- بخش شروع بازی (که در کد قبلی من خالی بود و اینجا اصلاح شده) ---
     if action == "start":
-        # ... (بخش شروع بازی شما صحیح است و نیازی به تغییر ندارد) ...
+        await query.answer()
+        try:
+            target_user_id = int(data[-1])
+            if user.id != target_user_id:
+                await query.answer("این پنل برای شما نیست!", show_alert=True)
+                return
+        except (ValueError, IndexError):
+            await query.answer("خطا: دکمه نامعتبر است.", show_alert=True)
+            return
+
+        if chat_id not in active_games['memory']:
+            active_games['memory'][chat_id] = {}
+
+        size_str = data[2]
+        rows, cols = map(int, size_str.split('x'))
+
+        sent_message = await query.message.reply_text(f"در حال ساخت بازی حافظه ({size_str})...")
+        game_id = sent_message.message_id
+        
+        game = {
+            "game_id": game_id, "status": "joining",
+            "players_info": [{'id': user.id, 'name': user.first_name, 'score': 0}],
+            "board_solution": generate_memory_board(rows, cols),
+            "board_view": [['❔'] * cols for _ in range(rows)],
+            "turn": None,
+            "first_card": None,
+            "is_checking": False,
+            "matched_pairs": 0,
+            "total_pairs": (rows * cols) // 2
+        }
+        active_games['memory'][chat_id][game_id] = game
+        
+        text = f"بازی حافظه ({size_str}) توسط {user.mention_html()} ساخته شد! منتظر حریف...\n\n( @RHINOSOUL_TM برای پیوستن به بازی، عضو کانال شوید)"
+        keyboard = [[InlineKeyboardButton("پیوستن به بازی (1/2)", callback_data=f"memory_join_{game_id}")]]
+        await sent_message.edit_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode=ParseMode.HTML)
+        
+        try:
+            await query.message.delete()
+        except Exception: 
+            pass
         return
 
+    # --- بخش‌های دیگر بازی ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
+        await query.answer("خطای دکمه.", show_alert=True)
         return
 
     if chat_id not in active_games['memory'] or game_id not in active_games['memory'][chat_id]:
@@ -2462,17 +2504,33 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
     game = active_games['memory'][chat_id][game_id]
 
+    # --- بخش پیوستن به بازی (که در کد قبلی من خالی بود و اینجا اصلاح شده) ---
     if action == "join":
-        # ... (بخش پیوستن به بازی شما صحیح است و نیازی به تغییر ندارد) ...
+        if not await check_join_for_alert(update, context):
+            return
+
+        await query.answer()
+        if any(p['id'] == user.id for p in game['players_info']):
+            await query.answer("شما قبلاً به بازی پیوسته‌اید!", show_alert=True)
+            return
+        if len(game['players_info']) >= 2:
+            await query.answer("ظرفیت بازی تکمیل است.", show_alert=True)
+            return
+            
+        game['players_info'].append({'id': user.id, 'name': user.first_name, 'score': 0})
+        game['status'] = 'playing'
+        game['turn'] = game['players_info'][0]['id']
+
+        text, reply_markup = await render_memory_board(game)
+        await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         return
 
+    # --- بخش اصلی منطق بازی (نسخه کامل و اصلاح شده قبلی) ---
     elif action == "flip":
-        # بررسی قفل منطقی برای جلوگیری از کلیک‌های سریع و اضافه
         if game.get('is_checking', False):
             await query.answer("لطفاً صبر کنید...", show_alert=False)
             return
         
-        # بررسی نوبت بازیکن
         if user.id != game.get('turn'):
             await query.answer("نوبت شما نیست!", show_alert=True)
             return
@@ -2483,55 +2541,39 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("این کارت قبلاً انتخاب شده!", show_alert=True)
             return
         
-        # پاسخ اولیه به کلیک برای روان شدن بازی
         await query.answer()
-
         card_value = game['board_solution'][r][c]
         game['board_view'][r][c] = card_value
 
-        if not game['first_card']:  # این اولین کارت انتخاب شده در نوبت است
+        if not game['first_card']:
             game['first_card'] = {'r': r, 'c': c, 'val': card_value}
             text, reply_markup = await render_memory_board(game)
             await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
         
-        else:  # این دومین کارت انتخاب شده است
-            game['is_checking'] = True  # بازی را قفل کن
+        else:
+            game['is_checking'] = True
             try:
-                # صفحه را با دو کارت رو شده به کاربر نشان بده
                 text, reply_markup = await render_memory_board(game)
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
                 await asyncio.sleep(1.5)
                 
                 first_card = game['first_card']
                 
-                # بررسی اینکه آیا کارت‌ها جفت هستند یا خیر
                 if card_value == first_card['val'] and (r, c) != (first_card['r'], first_card['c']):
-                    # حالت جفت صحیح
                     game['matched_pairs'] += 1
                     current_player = next(p for p in game['players_info'] if p['id'] == game['turn'])
                     current_player['score'] += 1
-                    # نوبت عوض نمی‌شود (جایزه)
-                
                 else:
-                    # حالت جفت اشتباه
-                    # کارت‌ها را در حافظه ربات به حالت '؟' برگردان
                     game['board_view'][r][c] = '❔'
                     game['board_view'][first_card['r']][first_card['c']] = '❔'
-                    # نوبت را به بازیکن بعدی بده
                     current_turn_id = game['turn']
                     next_player = next(p for p in game['players_info'] if p['id'] != current_turn_id)
                     game['turn'] = next_player['id']
-                
             finally:
-                # در هر صورت، وضعیت را برای حرکت بعدی آماده کن و قفل را آزاد کن
                 game['first_card'] = None
                 game['is_checking'] = False
 
-            # --- بلوک کد حیاتی که مشکل را حل می‌کند ---
-            # بعد از بررسی، چه جفت درست باشد و چه غلط، صفحه بازی را به‌روزرسانی کن
-
             if game['matched_pairs'] == game['total_pairs']:
-                # اگر بازی تمام شد
                 p1 = game['players_info'][0]
                 p2 = game['players_info'][1]
                 
@@ -2549,8 +2591,6 @@ async def memory_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
                 del active_games['memory'][chat_id][game_id]
             else:
-                # اگر بازی ادامه دارد، صفحه را با وضعیت جدید نمایش بده
-                # این دستور کارت‌های اشتباه را به حالت '؟' برمی‌گرداند
                 text, reply_markup = await render_memory_board(game)
                 await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
     

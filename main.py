@@ -621,9 +621,6 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if chat_id not in active_games['hokm']:
             active_games['hokm'][chat_id] = {}
-        if game.get('is_busy', False):
-            await query.answer("کمی صبر کنید، در حال پردازش حرکت قبلی...", show_alert=False)
-            return
         
         sent_message = await query.message.reply_text(f"در حال ساخت بازی حکم {max_players} نفره...")
         game_id = sent_message.message_id
@@ -692,8 +689,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "status": "dealing_first_5", "deck": create_deck(), "hands": {pid: [] for pid in p_ids},
                 "hakem_id": None, "hakem_name": None, "turn_index": 0, "hokm_suit": None, "current_trick": [],
                 "trick_scores": {'A': 0, 'B': 0} if game['mode'] == '4p' else {pid: 0 for pid in p_ids},
-                "game_scores": game.get('game_scores', {'A': 0, 'B': 0} if game['mode'] == '4p' else {pid: 0 for pid in p_ids}),
-                "is_busy": False
+                "game_scores": game.get('game_scores', {'A': 0, 'B': 0} if game['mode'] == '4p' else {pid: 0 for pid in p_ids})
             })
 
             for _ in range(5):
@@ -780,17 +776,13 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         game['turn_index'] = next(i for i, p in enumerate(game['players']) if p['id'] == winner_id)
         
-
-        game['is_busy'] = True
-        try:
-            winner_name = next(p['name'] for p in game['players'] if p['id'] == winner_id)
-            temp_game_state = game.copy()
-            temp_reply_markup = await render_hokm_board(temp_game_state, context)
-            await query.edit_message_text(f"برنده این دست: {winner_name}\n\nصبر کنید...", reply_markup=temp_reply_markup)
-
-            await asyncio.sleep(2.5)
-        finally:
-            game['is_busy'] = False
+        # نمایش موقت نتیجه دست
+        winner_name = next(p['name'] for p in game['players'] if p['id'] == winner_id)
+        temp_game_state = game.copy()
+        temp_reply_markup = await render_hokm_board(temp_game_state, context)
+        await query.edit_message_text(f"برنده این دست: {winner_name}\n\nصبر کنید...", reply_markup=temp_reply_markup)
+        
+        await asyncio.sleep(2.5)
 
         game['current_trick'] = [] # پاک کردن میز
 

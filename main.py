@@ -882,6 +882,9 @@ SAMEGAME_WIDTH, SAMEGAME_HEIGHT = 10, 10
 SAMEGAME_COLORS = ["🟥", "🟩", "🟦", "🟨", "🟪"]
 EMPTY_CELL = "⬛️" # یا هر اموجی دیگری که برای خانه خالی می‌پسندید
 
+# (این را کنار بقیه لیست‌ها مثل WORD_LIST قرار دهید)
+NUMBER_EMOJIS = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣", "6️⃣", "7️⃣", "8️⃣", "9️⃣", "🔟", "1️⃣1️⃣", "1️⃣2️⃣", "1️⃣3️⃣"]
+
 # --- تنظیمات لاگ ---
 logging.basicConfig(format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -1450,7 +1453,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
             return
         hand = sorted(game['hands'].get(user.id, []))
-        hand_str = "  ~  ".join([f"{i+1}. {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
+        hand_str = "...".join([f"{NUMBER_EMOJIS[i]} {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
         await query.answer(f"دست شما:\n{hand_str}", show_alert=True)
 
     elif action == "play":

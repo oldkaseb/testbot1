@@ -956,15 +956,13 @@ async def render_2048_board(game):
 
 async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
-    # if await check_ban_status(update, context): return
-    
     data = query.data.split('_')
     action = data[1]
 
-    # --- بلوک ۱: شروع بازی ---
     if action == "start":
         try:
             target_user_id = int(data[-1])
@@ -978,11 +976,10 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         if chat_id not in active_games['2048']:
             active_games['2048'][chat_id] = {}
         
-        # جلوگیری از شروع چند بازی همزمان توسط یک نفر
         if any(g['player_id'] == user.id for g in active_games['2048'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک بازی 2048 فعال دارید.", show_alert=True)
             return
-            await query.answer()
+
         sent_message = await query.message.reply_text("در حال ساخت بازی 2048...")
         game_id = sent_message.message_id
         
@@ -992,9 +989,10 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
         game = {
             "game_id": game_id,
-            "player_id": user.id,  # << مهم: ثبت شناسه بازیکن
+            "player_id": user.id,
             "board": initial_board,
-            "score": 0
+            "score": 0,
+            "is_busy": False
         }
         active_games['2048'][chat_id][game_id] = game
         
@@ -1007,7 +1005,6 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             pass
         return
 
-    # --- بلوک ۲: مدیریت سایر اکشن‌های بازی ---
     try:
         game_id = int(data[2])
     except (ValueError, IndexError):
@@ -1022,51 +1019,55 @@ async def game_2048_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
         
     game = active_games['2048'][chat_id][game_id]
     
-    # << امنیتی: فقط بازیکنی که بازی را ساخته می‌تواند آن را کنترل کند >>
     if user.id != game['player_id']:
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
+    if game.get('is_busy', False):
+        return
+
     if action == "move":
-        direction = data[3]
-        
-        transformed = transform_2048_board(game['board'], direction)
-        moved_board, score_inc, moved = move_2048_left(transformed)
-        final_board = reverse_transform_2048_board(moved_board, direction)
+        game['is_busy'] = True
+        try:
+            direction = data[3]
+            
+            transformed = transform_2048_board(game['board'], direction)
+            moved_board, score_inc, moved = move_2048_left(transformed)
+            final_board = reverse_transform_2048_board(moved_board, direction)
 
-        if moved:
-            game['board'] = add_new_2048_tile(final_board)
-            game['score'] += score_inc
-        else:
-            await query.answer("حرکت غیرمجاز!")
-            return
+            if moved:
+                game['board'] = add_new_2048_tile(final_board)
+                game['score'] += score_inc
+            else:
+                await query.answer("حرکت غیرمجاز!")
+                return
 
-        text, reply_markup = await render_2048_board(game)
-        
-        # بررسی شرایط پایان بازی
-        game_over = False
-        if any(2048 in row for row in game['board']):
-            text += f"\n\n🏆 **تبریک!** شما برنده شدید! 🏆"
-            game_over = True
-        elif not can_move_2048(game['board']):
-            text += f"\n\n☠️ **بازی تمام شد!** شما باختید."
-            game_over = True
+            text, reply_markup = await render_2048_board(game)
+            
+            game_over = False
+            if any(2048 in row for row in game['board']):
+                text += f"\n\n🏆 **تبریک!** شما برنده شدید! 🏆"
+                game_over = True
+            elif not can_move_2048(game['board']):
+                text += f"\n\n☠️ **بازی تمام شد!** شما باختید."
+                game_over = True
 
-        if game_over:
-            # در انتهای بازی، دکمه‌ها را حذف می‌کنیم
-            await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
-            del active_games['2048'][chat_id][game_id]
-        else:
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            if game_over:
+                await query.edit_message_text(text, reply_markup=None, parse_mode=ParseMode.MARKDOWN)
+                del active_games['2048'][chat_id][game_id]
+            else:
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+        finally:
+            if chat_id in active_games['2048'] and game_id in active_games['2048'][chat_id]:
+                active_games['2048'][chat_id][game_id]['is_busy'] = False
 
     elif action == "close":
         await query.edit_message_text("بازی 2048 بسته شد.")
         del active_games['2048'][chat_id][game_id]
 
     elif action == "noop":
-        # برای دکمه‌های صفحه بازی که کاری انجام نمی‌دهند
         pass
-    
+
 # --------------------------- GAME: GUESS THE NUMBER (ConversationHandler - بدون تغییر) ---------------------------
 async def hads_addad_start_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
@@ -2107,11 +2108,10 @@ async def render_spuzzle(game):
 # --- تابع اصلی و بازنویسی شده پازل ---
 async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    await query.answer()
     user = query.from_user
     chat_id = query.message.chat.id
 
-    # if await check_ban_status(update, context): return
-    
     data = query.data.split('_')
     action = data[1]
 
@@ -2126,19 +2126,20 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
 
         if chat_id not in active_games['spuzzle']:
-            active_games['spuzzle'] = {chat_id: {}}
+            active_games['spuzzle'][chat_id] = {}
         
         if any(g['player_id'] == user.id for g in active_games['spuzzle'].get(chat_id, {}).values()):
             await query.answer("شما از قبل یک پازل فعال دارید.", show_alert=True)
             return
-            await query.answer()
+
         sent_message = await query.message.reply_text("در حال ساخت پازل کشویی...")
         game_id = sent_message.message_id
         
         game = {
             "game_id": game_id, "player_id": user.id,
             "board": create_solvable_spuzzle(),
-            "start_time": time.time()
+            "start_time": time.time(),
+            "is_busy": False
         }
         active_games['spuzzle'][chat_id][game_id] = game
         
@@ -2166,55 +2167,60 @@ async def spuzzle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.answer("این بازی برای شما نیست!", show_alert=True)
         return
 
+    if game.get('is_busy', False):
+        return
+
     if action == "move":
-        direction = data[3]
-        board = game['board']
-        empty_r, empty_c = -1, -1
-        for r_idx, row in enumerate(board):
-            if 0 in row:
-                empty_r, empty_c = r_idx, row.index(0)
-                break
+        game['is_busy'] = True
+        try:
+            direction = data[3]
+            board = game['board']
+            empty_r, empty_c = -1, -1
+            for r_idx, row in enumerate(board):
+                if 0 in row:
+                    empty_r, empty_c = r_idx, row.index(0)
+                    break
 
-        tile_r, tile_c = empty_r, empty_c
-        if direction == 'up': tile_r += 1
-        elif direction == 'down': tile_r -= 1
-        elif direction == 'left': tile_c += 1
-        elif direction == 'right': tile_c -= 1
-        
-        if 0 <= tile_r < SPUZZLE_SIZE and 0 <= tile_c < SPUZZLE_SIZE:
-            board[empty_r][empty_c], board[tile_r][tile_c] = board[tile_r][tile_c], board[empty_r][empty_c]
-
-            if is_spuzzle_solved(board):
-                duration = time.time() - game['start_time']
-                
-                # به جای حذف و ارسال مجدد، پیام را ویرایش می‌کنیم
-                final_text = (
-                    f"🏆 **تبریک {user.mention_html()}!** 🏆\n\n"
-                    f"شما پازل را در زمان **{int(duration)} ثانیه** حل کردید!"
-                )
-                
-                # رندر نهایی صفحه حل‌شده بدون دکمه‌های کنترل
-                final_board_text, _ = await render_spuzzle(game)
-                
-                await query.edit_message_text(
-                    f"{final_board_text}\n\n{final_text}",
-                    reply_markup=None, # حذف دکمه‌ها
-                    parse_mode=ParseMode.HTML
-                )
-                del active_games['spuzzle'][chat_id][game_id]
-                return
+            tile_r, tile_c = empty_r, empty_c
+            if direction == 'up': tile_r += 1
+            elif direction == 'down': tile_r -= 1
+            elif direction == 'left': tile_c += 1
+            elif direction == 'right': tile_c -= 1
             
-            text, reply_markup = await render_spuzzle(game)
-            await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
-        else:
-            await query.answer("حرکت غیرمجاز!")
+            if 0 <= tile_r < SPUZZLE_SIZE and 0 <= tile_c < SPUZZLE_SIZE:
+                board[empty_r][empty_c], board[tile_r][tile_c] = board[tile_r][tile_c], board[empty_r][empty_c]
+
+                if is_spuzzle_solved(board):
+                    duration = time.time() - game['start_time']
+                    
+                    final_text = (
+                        f"🏆 **تبریک {user.mention_html()}!** 🏆\n\n"
+                        f"شما پازل را در زمان **{int(duration)} ثانیه** حل کردید!"
+                    )
+                    
+                    final_board_text, _ = await render_spuzzle(game)
+                    
+                    await query.edit_message_text(
+                        f"{final_board_text}\n\n{final_text}",
+                        reply_markup=None,
+                        parse_mode=ParseMode.HTML
+                    )
+                    del active_games['spuzzle'][chat_id][game_id]
+                    return
+                
+                text, reply_markup = await render_spuzzle(game)
+                await query.edit_message_text(text, reply_markup=reply_markup, parse_mode=ParseMode.MARKDOWN)
+            else:
+                await query.answer("حرکت غیرمجاز!")
+        finally:
+            if chat_id in active_games['spuzzle'] and game_id in active_games['spuzzle'][chat_id]:
+                active_games['spuzzle'][chat_id][game_id]['is_busy'] = False
 
     elif action == "close":
         await query.edit_message_text("پازل کشویی بسته شد.")
         del active_games['spuzzle'][chat_id][game_id]
 
     elif action == "noop":
-        # برای کلیک روی اعداد که کاری انجام نمی‌دهند
         pass
 
 # ========================= SLIDING PUZZLE CODE (END) - v2 ==========================

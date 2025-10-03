@@ -1453,7 +1453,7 @@ async def hokm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.answer("شما بازیکن این مسابقه نیستید!", show_alert=True)
             return
         hand = sorted(game['hands'].get(user.id, []))
-        hand_str = "...".join([f"{NUMBER_EMOJIS[i]} {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
+        hand_str = "\n".join([f"{NUMBER_EMOJIS[i]} {card_to_persian(c)}" for i, c in enumerate(hand)]) or "شما کارتی در دست ندارید."
         await query.answer(f"دست شما:\n{hand_str}", show_alert=True)
 
     elif action == "play":

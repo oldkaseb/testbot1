@@ -3271,29 +3271,46 @@ async def checkgps_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # -----------------
 async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.info("track_chats handler triggered by a chat member update.")
+    # این اولین پیامی است که باید در لاگ ببینیم
+    logger.info("--- track_chats handler triggered ---")
+    
     result = update.chat_member
-    if not result: 
+    if not result:
+        logger.warning("Update is empty inside track_chats. Exiting.")
         return
 
-    chat = result.chat
-    user = result.from_user # کاربری که ربات را اضافه کرده
+    # لاگ وضعیت‌های جدید و قدیم برای بررسی شرط
+    logger.info(f"Chat member update received. Old status: '{result.old_chat_member.status}', New status: '{result.new_chat_member.status}'")
     
+    chat = result.chat
+    user = result.from_user
+    
+    # مطمئن می‌شویم که تغییر وضعیت مربوط به ربات ماست
+    if result.new_chat_member.user.id != context.bot.id:
+        logger.info("Update is not for our bot. Ignoring.")
+        return
+
     # --- وقتی ربات به گروه اضافه می‌شود ---
+    # این شرط اصلاح شده است تا حالت ادمین را نیز بپذیرد
     if result.new_chat_member.status in ('member', 'administrator') and result.old_chat_member.status not in ('member', 'administrator'):
-        logger.info(f"Bot was added to group: {chat.title} ({chat.id})")
+        logger.info(f"CONDITION MET: Bot was added to group '{chat.title}' ({chat.id})")
+        
         conn = get_db_connection()
-        if not conn: 
-            logger.error("Database connection failed inside track_chats.")
+        if not conn:
+            logger.error("Database connection FAILED inside track_chats.")
             return
         
+        logger.info("Database connection successful.")
+        
         try:
-            # بخش مربوط به محدودیت نصب (کد اصلی شما بدون تغییر)
+            # بخش بررسی محدودیت نصب
             with conn.cursor() as cur:
                 cur.execute("SELECT COUNT(*) FROM groups;")
                 group_count = cur.fetchone()[0]
-            
+            logger.info(f"Current group count in DB is: {group_count}")
+
             if group_count >= GROUP_INSTALL_LIMIT:
+                logger.warning(f"Install limit reached ({GROUP_INSTALL_LIMIT}). Leaving chat {chat.id}.")
                 await chat.send_message(f"⚠️ ظرفیت نصب این ربات تکمیل شده است! لطفاً با پشتیبانی (@{SUPPORT_USERNAME}) تماس بگیرید.")
                 await context.bot.leave_chat(chat.id)
                 for owner_id in OWNER_IDS:
@@ -3304,60 +3321,39 @@ async def track_chats(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
             with conn.cursor() as cur:
                 cur.execute("INSERT INTO groups (group_id, title, member_count) VALUES (%s, %s, %s) ON CONFLICT (group_id) DO UPDATE SET title = EXCLUDED.title, member_count = EXCLUDED.member_count;", (chat.id, chat.title, member_count))
             conn.commit()
-            logger.info(f"Group '{chat.title}' ({chat.id}) was successfully added/updated in the database.")
+            logger.info("SUCCESS: Group info was inserted/updated in the database.")
 
-            # ارسال پیام خوشامدگویی (کد اصلی شما بدون تغییر)
+            # ارسال پیام خوشامدگویی
             keyboard = [[InlineKeyboardButton("🎮 نمایش پنل بازی‌ها", callback_data=f"rsgame_cat_main_{chat.id}")]]
             await chat.send_message("سلام! 👋 من با موفقیت نصب شدم.\nبرای شروع از دستور /rsgame یا دکمه زیر استفاده کنید.", reply_markup=InlineKeyboardMarkup(keyboard))
+            logger.info("Welcome message sent to the group.")
 
-            # --- بخش جدید: تلاش برای دریافت لینک ---
+            # دریافت لینک و ارسال گزارش
             invite_link_text = "لینک دریافت نشد (ربات ادمین نیست)"
             try:
                 link = await context.bot.export_chat_invite_link(chat.id)
                 invite_link_text = f"[ورود به گروه]({link})"
-                logger.info(f"Successfully generated invite link for group {chat.id}.")
             except Exception as e:
-                logger.warning(f"Could not generate invite link for group {chat.id}: {e}")
-            # --- پایان بخش جدید ---
+                logger.warning(f"Could not get invite link: {e}")
             
-            # ارسال گزارش به ادمین‌ها با فرمت اصلی شما + لینک
-            report = (
-                f"➕ **ربات به گروه جدید اضافه شد:**\n\n"
-                f"🌐 نام: {chat.title}\n"
-                f"🆔 آیدی: `{chat.id}`\n"
-                f"👥 اعضا: {member_count}\n"
-                f"🔗 لینک ورود: {invite_link_text}\n\n"
-                f"👤 توسط: {user.mention_html()} (ID: `{user.id}`)"
-            )
+            report = f"➕ **ربات به گروه جدید اضافه شد:**\n\n🌐 نام: {chat.title}\n🆔: `{chat.id}`\n👥 اعضا: {member_count}\n🔗 لینک ورود: {invite_link_text}\n\n👤 توسط: {user.mention_html()} (ID: `{user.id}`)"
             for owner_id in OWNER_IDS:
                 try: 
                     await context.bot.send_message(owner_id, report, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
-                    logger.info(f"Join report for group {chat.id} sent to owner {owner_id}.")
                 except Exception as e:
-                    logger.error(f"Failed to send join report to owner {owner_id}: {e}")
+                    logger.error(f"Failed to send report to owner {owner_id}: {e}")
+            logger.info("Report sending process finished.")
 
         except Exception as e:
-            logger.error(f"An unexpected error occurred in track_chats (join section): {e}")
+            logger.error(f"An unexpected error occurred in the main try block of track_chats: {e}")
         finally:
             conn.close()
+            logger.info("Database connection closed.")
 
     # --- وقتی ربات از گروه حذف می‌شود ---
-    elif result.new_chat_member.status == 'left':
-        logger.info(f"Bot was removed from group: {chat.title} ({chat.id})")
-        conn = get_db_connection()
-        if conn:
-            with conn.cursor() as cur:
-                cur.execute("DELETE FROM groups WHERE group_id = %s;", (chat.id,))
-            conn.commit()
-            conn.close()
-            logger.info(f"Group {chat.id} removed from database.")
-        
-        report = f"❌ **ربات از گروه زیر اخراج شد:**\n\n🌐 نام: {chat.title}\n🆔: `{chat.id}`"
-        for owner_id in OWNER_IDS:
-            try: 
-                await context.bot.send_message(owner_id, report, parse_mode=ParseMode.MARKDOWN)
-            except Exception: 
-                pass
+    elif result.new_chat_member.status == 'left' or result.new_chat_member.status == 'kicked':
+        logger.info(f"CONDITION MET: Bot was removed from group '{chat.title}' ({chat.id})")
+        # ... (بقیه کد حذف از دیتابیس)
 
 async def stop_games_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """

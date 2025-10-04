@@ -981,6 +981,10 @@ async def secret_report(context, group_id, sender_id, receiver_id, text, group_t
         except Exception:
             continue
 # ---------- نمایش پیام (id جدید) ----------
+# main.py
+
+# ... (کدهای قبلی)
+
 async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cq = update.callback_query
     user = update.effective_user
@@ -991,29 +995,157 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     async with pool.acquire() as con:
-        w = await con.fetchrow("SELECT id, group_id, sender_id, receiver_id, text, status, message_id FROM whispers WHERE id=$1;", wid)
+        w = await con.fetchrow("SELECT id, group_id, sender_id, receiver_id, text, status FROM whispers WHERE id=$1;", wid)
     if not w:
-        await cq.answer("پیام یافت نشد.", show_alert=True); return
-
-    sender_id = int(w["sender_id"]); receiver_id = int(w["receiver_id"])
-  
-    allowed = (user.id == sender_id) or (receiver_id and user.id == receiver_id) or ((user.username or "").lower() == (recv_un or "")) or (user.id in ADMIN_ID)
-
-    if not allowed:
-        await cq.answer("فضولی نکن این پیام رو اجازه نداری ببینی", show_alert=True)
+        await cq.answer("پیام یافت نشد.", show_alert=True)
         return
 
+    sender_id = int(w["sender_id"])
+    receiver_id = int(w["receiver_id"])
+    
+    # شرط امنیتی: فقط فرستنده، گیرنده یا ادمین‌ها دسترسی دارند
+    allowed = (user.id == sender_id) or (user.id == receiver_id) or (user.id in ADMIN_ID)
+
+    if not allowed:
+        await cq.answer("فضولی نکن! این پیام برای شما نیست.", show_alert=True)
+        return
+
+    # نمایش متن نجوا به کاربر مجاز در هر صورت
     text = w["text"]
     alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + " …")
     await cq.answer(text=alert_text, show_alert=True)
 
     if len(text) > ALERT_SNIPPET:
+        try:
+            await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+        except Exception:
+            pass
+
+    # 🔽 ------- منطق اصلی و جدید از اینجا شروع می‌شود ------- 🔽
+
+    # اگر پیام قبلاً خوانده نشده و کاربری که کلیک کرده گیرنده است، آن را ادیت کن
+    if w["status"] != "read" and user.id == receiver_id:
+        try:
+            sender_name = await get_name_for(sender_id, "فرستنده")
+            sender_mention = mention_html(sender_id, sender_name)
+            
+            # متن جدید پیام
+            new_text = f"✅ نجوای {sender_mention} خوانده شد."
+            
+            # دکمه‌های جدید: "نمایش مجدد" و "پاسخ"
+            reshow_button = InlineKeyboardButton("🔒 نمایش مجدد", callback_data=f"reshow:{wid}")
+            reply_button = InlineKeyboardButton("✍️ پاسخ", callback_data=f"reply:{sender_id}:{receiver_id}")
+            
+            # ساخت کیبورد جدید با دو دکمه در یک ردیف
+            new_keyboard = InlineKeyboardMarkup([[reshow_button, reply_button]])
+            
+            await cq.edit_message_text(
+                text=new_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=new_keyboard
+            )
+        except Exception:
+            # اگر ادیت پیام با خطا مواجه شد، مشکلی نیست. وضعیت در دیتابیس آپدیت می‌شود.
+            pass
+
+    # وضعیت پیام را در دیتابیس به "خوانده شده" تغییر می‌دهیم
+    # این کار بعد از کلیک اول انجام می‌شود و تکرار نخواهد شد.
+    if w["status"] != "read":
+        async with pool.acquire() as con:
+            await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", wid)
+
+# main.py
+
+# ... (بعد از تابع on_show_by_id)
+
+async def on_reshow_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """این تابع فقط برای دکمه «نمایش مجدد» است و پیام را دوباره نشان می‌دهد."""
+    cq = update.callback_query
+    user = update.effective_user
+    try:
+        _, wid = cq.data.split(":")
+        wid = int(wid)
+    except Exception:
+        return
+
+    async with pool.acquire() as con:
+        w = await con.fetchrow("SELECT sender_id, receiver_id, text FROM whispers WHERE id=$1;", wid)
+    if not w:
+        await cq.answer("پیام یافت نشد.", show_alert=True)
+        return
+
+    sender_id = int(w["sender_id"])
+    receiver_id = int(w["receiver_id"])
+    
+    # همان شرط امنیتی قبلی
+    allowed = (user.id == sender_id) or (user.id == receiver_id) or (user.id in ADMIN_ID)
+    
+    if not allowed:
+        await cq.answer("این پیام برای شما نیست.", show_alert=True)
+        return
+
+    # نمایش متن نجوا بدون هیچ تغییر دیگری
+    text = w["text"]
+    alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + " …")
+    await cq.answer(text=alert_text, show_alert=True)
+    if len(text) > ALERT_SNIPPET:
         try: await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
         except Exception: pass
 
-    if w["status"] != "read":
-        async with pool.acquire() as con:
-            await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", int(w["id"]))
+
+async def on_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """این تابع فرآیند پاسخ به نجوا را آغاز می‌کند."""
+    cq = update.callback_query
+    user = update.effective_user
+    chat = update.effective_chat
+    try:
+        _, target_id, replier_id = cq.data.split(":")
+        target_id, replier_id = int(target_id), int(replier_id)
+    except Exception:
+        return
+
+    # شرط امنیتی: فقط گیرنده اصلی نجوا (که حالا پاسخ‌دهنده است) می‌تواند پاسخ دهد
+    if user.id != replier_id:
+        await cq.answer("این دکمه برای شما نیست.", show_alert=True)
+        return
+
+    if MANDATORY_CHANNELS and not await is_member_required_channel(context, user.id):
+        await cq.answer(f"برای پاسخ دادن باید ابتدا در کانال ما عضو شوید: {_channels_text()}", show_alert=True)
+        return
+
+    await cq.answer("لطفاً برای ارسال پاسخ به پیوی ربات مراجعه کنید.")
+    async with pool.acquire() as con:
+        await con.execute(
+            """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at, reply_to_msg_id)
+               VALUES ($1, $2, $3, NOW(), $4, $5)
+               ON CONFLICT (sender_id) DO UPDATE SET
+                 group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id,
+                 created_at=NOW(), expires_at=$4, reply_to_msg_id=$5;""",
+            user.id, chat.id, target_id, FAR_FUTURE, cq.message.message_id
+        )
+
+    target_name = await get_name_for(target_id, "کاربر")
+    target_mention = mention_html(target_id, target_name)
+    replier_mention = mention_html(user.id, user.first_name)
+    
+    # پیام راهنما در گروه (این بخش اختیاری است، می‌توانید حذفش کنید اگر نمی‌خواهید گروه شلوغ شود)
+    sent_guide = await context.bot.send_message(
+        chat_id=chat.id,
+        text=f"{replier_mention}، شما درخواست پاسخ به نجوای {target_mention} را دادید. لطفاً پیام خود را به پیوی من بفرستید.",
+        parse_mode=ParseMode.HTML
+    )
+    schedule_delete(context, chat.id, sent_guide.message_id, 60) # پیام بعد از ۶۰ ثانیه پاک شود
+
+    try:
+        group_title = group_link_title(chat.title)
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=(f"⌛️ در حال پاسخ به نجوای {target_mention} در گروه «{group_title}» هستید.\n\n"
+                  f"لطفاً متن پاسخ خود را اینجا بفرستید."),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
 
 # ---------- نمایش پیام (سازگاری قدیمی) ----------
 async def on_show_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1183,6 +1315,9 @@ def main():
     app.add_handler(CallbackQueryHandler(on_show_by_id, pattern=r"^showid:\d+$"))
     app.add_handler(CallbackQueryHandler(on_show_cb, pattern=r"^show:\-?\d+:\d+:\d+$"))
 
+    app.add_handler(CallbackQueryHandler(on_reshow_button, pattern=r"^reshow:\d+$"))
+    app.add_handler(CallbackQueryHandler(on_reply_button, pattern=r"^reply:\d+:\d+$"))
+    
     # دکمهٔ بررسی عضویت در گروه
     app.add_handler(CallbackQueryHandler(on_checksub_group, pattern=r"^gjchk:\d+:-?\d+:\d+$"))
 

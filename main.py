@@ -1037,8 +1037,12 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
             
             reshow_button = InlineKeyboardButton("🔒 نمایش مجدد", callback_data=f"reshow:{wid}")
             reply_button = InlineKeyboardButton("✍️ پاسخ", callback_data=f"reply:{sender_id}:{receiver_id}")
+            rewhipser_button = InlineKeyboardButton("🤫 نجوای مجدد", callback_data=f"rewhipser:{sender_id}:{receiver_id}")
             
-            new_keyboard = InlineKeyboardMarkup([[reshow_button, reply_button]])
+            new_keyboard = InlineKeyboardMarkup([
+                [rewhipser_button, reply_button], # ردیف اول
+                [reshow_button]             # ردیف دوم
+            ])
             
             await cq.edit_message_text(
                 text=new_text,
@@ -1051,6 +1055,51 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if w["status"] != "read":
         async with pool.acquire() as con:
             await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", wid)
+
+async def on_rewhipser_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """این تابع فرآیند ارسال نجوای مجدد را برای فرستنده اصلی آغاز می‌کند."""
+    cq = update.callback_query
+    user = update.effective_user
+    chat = update.effective_chat
+
+    try:
+        _, sender_id, receiver_id = cq.data.split(":")
+        sender_id, receiver_id = int(sender_id), int(receiver_id)
+    except Exception:
+        return
+
+    # شرط امنیتی: فقط فرستنده اصلی می‌تواند از این دکمه استفاده کند
+    if user.id != sender_id:
+        await cq.answer("این دکمه برای شما (فرستنده اصلی نجوا) است.", show_alert=True)
+        return
+        
+    await cq.answer("برای ارسال نجوای مجدد به پیوی ربات مراجعه کنید.")
+
+    # ایجاد وضعیت "در انتظار" برای ارسال نجوای جدید
+    async with pool.acquire() as con:
+        await con.execute(
+            """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at, reply_to_msg_id)
+               VALUES ($1, $2, $3, NOW(), $4, $5)
+               ON CONFLICT (sender_id) DO UPDATE SET
+                 group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id,
+                 created_at=NOW(), expires_at=$4, reply_to_msg_id=$5;""",
+            user.id, chat.id, receiver_id, FAR_FUTURE, cq.message.message_id
+        )
+
+    # ارسال پیام راهنما در پیوی فرستنده
+    try:
+        receiver_name = await get_name_for(receiver_id, "گیرنده")
+        receiver_mention = mention_html(receiver_id, receiver_name)
+        group_title = group_link_title(chat.title)
+        
+        await context.bot.send_message(
+            chat_id=user.id,
+            text=(f"🤫 در حال ارسال نجوای مجدد به {receiver_mention} در گروه «{group_title}» هستید.\n\n"
+                  f"لطفاً متن نجوای خود را اینجا بفرستید."),
+            parse_mode=ParseMode.HTML
+        )
+    except Exception:
+        pass
 
 async def on_reshow_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """این تابع فقط برای دکمه «نمایش مجدد» است و پیام را دوباره نشان می‌دهد."""
@@ -1121,6 +1170,13 @@ async def on_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     target_name = await get_name_for(target_id, "کاربر")
     target_mention = mention_html(target_id, target_name)
     replier_mention = mention_html(user.id, user.first_name)
+
+    bot_username = BOT_USERNAME or "Secret_RhinoSoul_Bot" # استفاده از یوزرنیم ربات
+    go_to_pv_button = InlineKeyboardButton(
+        "✍️ ارسال پاسخ در پیوی",
+        url=f"https://t.me/{bot_username}?start=reply"
+    )
+    keyboard = InlineKeyboardMarkup([[go_to_pv_button]])
     
     # پیام راهنما در گروه (این بخش اختیاری است، می‌توانید حذفش کنید اگر نمی‌خواهید گروه شلوغ شود)
     sent_guide = await context.bot.send_message(
@@ -1133,11 +1189,12 @@ async def on_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         group_title = group_link_title(chat.title)
         await context.bot.send_message(
-            chat_id=user.id,
-            text=(f"⌛️ در حال پاسخ به نجوای {target_mention} در گروه «{group_title}» هستید.\n\n"
-                  f"لطفاً متن پاسخ خود را اینجا بفرستید."),
-            parse_mode=ParseMode.HTML
-        )
+        chat_id=chat.id,
+        text=f"{replier_mention}، برای پاسخ به نجوای {target_mention}، به پیوی ربات مراجعه کنید.",
+        parse_mode=ParseMode.HTML,
+        reply_to_message_id=cq.message.message_id,
+        reply_markup=keyboard  # دکمه به پیام اضافه شد
+    )
     except Exception:
         pass
 
@@ -1311,6 +1368,7 @@ def main():
 
     app.add_handler(CallbackQueryHandler(on_reshow_button, pattern=r"^reshow:\d+$"))
     app.add_handler(CallbackQueryHandler(on_reply_button, pattern=r"^reply:\d+:\d+$"))
+    app.add_handler(CallbackQueryHandler(on_rewhipser_button, pattern=r"^rewhipser:\d+:\d+$"))
     
     # دکمهٔ بررسی عضویت در گروه
     app.add_handler(CallbackQueryHandler(on_checksub_group, pattern=r"^gjchk:\d+:-?\d+:\d+$"))

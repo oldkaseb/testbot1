@@ -152,6 +152,16 @@ CREATE TABLE IF NOT EXISTS iwhispers (
   reported BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+CREATE TABLE IF NOT EXISTS whisper_contacts (
+  owner_id BIGINT NOT NULL,
+  peer_key TEXT NOT NULL,
+  peer_id BIGINT,
+  peer_username TEXT,
+  peer_name TEXT,
+  last_used TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (owner_id, peer_key)
+);
+
 CREATE TABLE IF NOT EXISTS group_whispers (
     token TEXT PRIMARY KEY,
     sender_id BIGINT NOT NULL,
@@ -162,16 +172,6 @@ CREATE TABLE IF NOT EXISTS group_whispers (
     created_at TIMESTAMPTZ DEFAULT NOW(),
     chat_id BIGINT,
     message_id BIGINT
-);
-
-CREATE TABLE IF NOT EXISTS whisper_contacts (
-  owner_id BIGINT NOT NULL,
-  peer_key TEXT NOT NULL,
-  peer_id BIGINT,
-  peer_username TEXT,
-  peer_name TEXT,
-  last_used TIMESTAMPTZ DEFAULT NOW(),
-  PRIMARY KEY (owner_id, peer_key)
 );
 """
 
@@ -521,7 +521,7 @@ async def group_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------- Inline Mode ----------
 BOT_USERNAME: str = ""
-INLINE_HELP = "فرمت: «@{bot} متن نجوا @username»\nمثال: @{bot} سلام @ali123".format
+INLINE_HELP = "فرمت: «@{bot} متن نجوا @username»\nمثال: @{bot} سلام @ali123"
 
 def _preview(s: str, n: int = 50) -> str:
     return s if len(s) <= n else (s[:n] + "…")
@@ -601,7 +601,7 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 id="help",
                 title="راهنما: ارسال نجوا",
                 description="متن نجوا و سپس یوزرنیم گیرنده(ها) را وارد کنید.",
-                input_message_content=InputTextMessageContent(INLINE_HELP(bot_username=BOT_USERNAME)),
+                input_message_content=InputTextMessageContent(INLINE_HELP.format(bot=BOT_USERNAME)),
                 thumbnail_url=avatar_url("help"),
             )
             results.append(help_result)
@@ -731,45 +731,34 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await cq.answer("این نجوا متعلق به شما نیست.", show_alert=True)
 
 async def report_and_save_inline_whisper(context: ContextTypes.DEFAULT_TYPE, cq, token: str, row: dict):
-    group_id = cq.message.chat.id
-    group_title = group_link_title(getattr(cq.message.chat, "title", "گروه"))
+    # برای حالت اینلاین، ما به اطلاعات گروه دسترسی نداریم، پس از ثبت آن صرف نظر می‌کنیم
+    # این کار جلوی خطای AttributeError را می‌گیرد
+
     sender_id = int(row["sender_id"])
-    receiver_id = int(row["receiver_id"] or cq.from_user.id) # اگر آیدی نبود، از کلیک کننده میگیریم
+    receiver_id = int(row["receiver_id"] or cq.from_user.id)
     text = row["text"]
-    
+
     sender_name = await get_name_for(sender_id)
     receiver_name = await get_name_for(receiver_id)
     run_final = row["receiver_username"] or await get_username_for(receiver_id)
 
     async with pool.acquire() as con:
-        # این بخش از دیتابیس برای گزارش‌گیری و آمار استفاده می‌شود
-        exists = await con.fetchval(
-            "SELECT 1 FROM whispers WHERE group_id=$1 AND sender_id=$2 AND receiver_id=$3 AND text=$4 AND message_id=$5 LIMIT 1;",
-            group_id, sender_id, receiver_id, text, cq.message.message_id
-        )
-        if not exists:
-            await con.execute(
-                """INSERT INTO whispers (group_id, sender_id, receiver_id, text, status, message_id)
-                   VALUES ($1,$2,$3,$4,'read',$5);""",
-                group_id, sender_id, receiver_id, text, cq.message.message_id
-            )
-        # این فلگ برای جلوگیری از ادیت و گزارش مجدد است
-        await con.execute("UPDATE iwhispers SET reported=TRUE, chat_id=$1 WHERE token=$2;", group_id, token)
-        
+        await con.execute("UPDATE iwhispers SET reported=TRUE WHERE token=$1;", token)
+
     await upsert_contact(sender_id, receiver_id, run_final, receiver_name)
 
-    await secret_report(
-        context,
-        group_id=group_id,
-        sender_id=sender_id,
-        receiver_id=receiver_id,
-        text=text,
-        group_title=group_title,
-        sender_name=sender_name,
-        receiver_name=receiver_name,
-        origin="inline",
-        receiver_username_fallback=run_final
+    # چون اطلاعات گروه را نداریم، گزارش را با اطلاعات محدودتری ارسال می‌کنیم
+    report_text = (
+        f"📥 نجوای اینلاین خوانده شد\n"
+        f"👤 فرستنده: {mention_html(sender_id, sender_name)}\n"
+        f"🎯 گیرنده: {mention_html(receiver_id, receiver_name)}\n"
+        f"📝 متن:\n{text}"
     )
+    for rid in READER_ID:
+        try:
+            await context.bot.send_message(rid, report_text, parse_mode=ParseMode.HTML)
+        except Exception:
+            continue
 
 # ---------- تشخیص تریگر در گروه (ریپلای) ----------
 async def group_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):

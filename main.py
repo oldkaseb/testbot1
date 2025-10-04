@@ -664,6 +664,9 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
         _, token = cq.data.split(":")
     except Exception:
         return
+    
+    # --- DEBUG PRINT 1 ---
+    print(f"--- STEP 1: Inline show triggered by user {user.id} for token {token} ---")
 
     async with pool.acquire() as con:
         row = await con.fetchrow(
@@ -672,6 +675,7 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     
     if not row:
+        print("!!! DEBUG: Row not found in DB. Exiting.")
         await cq.answer("این نجوا نامعتبر است.", show_alert=True)
         return
 
@@ -681,52 +685,42 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = row["text"]
     already_reported = bool(row["reported"])
 
-    # بررسی دقیق اینکه آیا کلیک‌کننده، گیرنده اصلی پیام است
+    # --- DEBUG PRINT 2 ---
+    print(f"--- STEP 2: DB row found. Sender: {sender_id}, Receiver ID: {receiver_id}, Receiver UN: '{recv_un}', Reported: {already_reported}")
+
     is_receiver = (receiver_id and user.id == receiver_id) or \
                   (not receiver_id and recv_un and (user.username or "").lower() == recv_un)
 
-    # اگر کلیک‌کننده فرستنده یا ادمین بود
+    # --- DEBUG PRINT 3 ---
+    print(f"--- STEP 3: Checking authorization for user {user.id} (username: '{(user.username or '').lower()}')... is_receiver = {is_receiver}")
+
     if user.id == sender_id or user.id in ADMIN_ID:
-        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
-        await cq.answer(alert_text, show_alert=True)
-        if len(text) > ALERT_SNIPPET:
-            try:
-                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
-            except Exception:
-                pass
-        # اگر شخص ادمین یا فرستنده باشد، کار همینجا تمام می‌شود و پیام ادیت نمی‌شود
+        print("--- DEBUG: User is sender or admin. Showing alert and returning.")
+        await cq.answer(text[:ALERT_SNIPPET], show_alert=True)
         return
 
-    # اگر کلیک‌کننده گیرنده اصلی بود
     if is_receiver:
-        # اگر آیدی عددی گیرنده مشخص نبود، با اولین کلیکش آن را ثبت می‌کنیم
+        print("--- STEP 4: User is confirmed as RECEIVER.")
         if not receiver_id:
             receiver_id = user.id
             async with pool.acquire() as con:
                 await con.execute("UPDATE iwhispers SET receiver_id=$1 WHERE token=$2;", user.id, token)
+            print("--- DEBUG: Receiver ID was null, updated it in DB.")
 
-        # نمایش محتوای نجوا به گیرنده
-        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
-        await cq.answer(alert_text, show_alert=True)
-        if len(text) > ALERT_SNIPPET:
-            try:
-                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
-            except Exception:
-                pass
+        await cq.answer(text[:ALERT_SNIPPET], show_alert=True)
 
-        # ---- بخش کلیدی: ویرایش پیام ----
-        # اگر پیام قبلا خوانده نشده بود، آن را ویرایش کن
         if not already_reported:
+            # --- DEBUG PRINT 5 ---
+            print("--- STEP 5: Message is NOT reported. Proceeding to EDIT.")
+            
+            # ... (کد ساخت کیبورد مثل قبل است و نیازی به تغییر ندارد)
             sender_name = await get_name_for(sender_id)
             receiver_name = await get_name_for(receiver_id)
-
             edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
-
             sender_username = await get_username_for(sender_id)
             receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
             reply_query = f"@{sender_username} " if sender_username else ""
             resend_query = f"@{receiver_username} " if receiver_username else ""
-
             keyboard = InlineKeyboardMarkup([
                 [
                     InlineKeyboardButton("پاسخ 🗣", switch_inline_query_current_chat=reply_query),
@@ -734,27 +728,25 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     InlineKeyboardButton("نمایش مجدد 👁", callback_data=f"ireshow:{token}"),
                 ]
             ])
-            
+
             try:
-                # --- دستور اصلی ویرایش ---
                 await cq.edit_message_text(
                     text=edited_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=keyboard
                 )
-                # پس از ویرایش موفق، آن را در دیتابیس ثبت کن
+                print("--- >>> DEBUG: Edit successful!")
                 await report_and_save_inline_whisper(context, cq, token, row)
-
             except Exception as e:
-                # اگر ویرایش با خطا مواجه شد، به کاربر اطلاع بده
-                print(f"خطا در ویرایش پیام اینلاین: {e}")
-                # ما همچنان وضعیت را به خوانده شده تغییر می‌دهیم تا دوباره تلاش برای ویرایش نشود
+                print(f"--- !!! DEBUG: EDIT FAILED! Error: {e}")
                 await report_and_save_inline_whisper(context, cq, token, row)
                 await cq.answer("پیام خوانده شد، اما به دلیل قدیمی بودن قابل ویرایش نیست.", show_alert=True)
-
-    # اگر کاربر هیچکدام از افراد مجاز نبود
+        else:
+            # --- DEBUG PRINT 5 ---
+            print("--- STEP 5: Message was ALREADY reported. Skipping edit.")
     else:
-        await cq.answer("این نجوا متعلق به شما نیست، لطفاً کنجکاوی نکنید!", show_alert=True)
+        print("--- DEBUG: User is not authorized.")
+        await cq.answer("این نجوا متعلق به شما نیست.", show_alert=True)
 
 async def report_and_save_inline_whisper(context: ContextTypes.DEFAULT_TYPE, cq, token: str, row: dict):
     group_id = cq.message.chat.id

@@ -1003,14 +1003,12 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_id = int(w["sender_id"])
     receiver_id = int(w["receiver_id"])
     
-    # شرط امنیتی: فقط فرستنده، گیرنده یا ادمین‌ها دسترسی دارند
     allowed = (user.id == sender_id) or (user.id == receiver_id) or (user.id in ADMIN_ID)
 
     if not allowed:
         await cq.answer("فضولی نکن! این پیام برای شما نیست.", show_alert=True)
         return
 
-    # نمایش متن نجوا به کاربر مجاز در هر صورت
     text = w["text"]
     alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + " …")
     await cq.answer(text=alert_text, show_alert=True)
@@ -1021,22 +1019,25 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
-    # 🔽 ------- منطق اصلی و جدید از اینجا شروع می‌شود ------- 🔽
-
-    # اگر پیام قبلاً خوانده نشده و کاربری که کلیک کرده گیرنده است، آن را ادیت کن
     if w["status"] != "read" and user.id == receiver_id:
         try:
+            # 🔽 ------- تغییر اصلی اینجاست ------- 🔽
             sender_name = await get_name_for(sender_id, "فرستنده")
             sender_mention = mention_html(sender_id, sender_name)
             
-            # متن جدید پیام
-            new_text = f"✅ نجوای {sender_mention} خوانده شد."
+            # نام گیرنده را هم برای نمایش در پیام می‌گیریم
+            receiver_name = await get_name_for(receiver_id, "گیرنده")
+            receiver_mention = mention_html(receiver_id, receiver_name)
             
-            # دکمه‌های جدید: "نمایش مجدد" و "پاسخ"
+            # متن جدید پیام با هر دو منشن
+            new_text = (
+                f"✅ نجوای {sender_mention} "
+                f"به {receiver_mention} خوانده شد."
+            )
+            
             reshow_button = InlineKeyboardButton("🔒 نمایش مجدد", callback_data=f"reshow:{wid}")
             reply_button = InlineKeyboardButton("✍️ پاسخ", callback_data=f"reply:{sender_id}:{receiver_id}")
             
-            # ساخت کیبورد جدید با دو دکمه در یک ردیف
             new_keyboard = InlineKeyboardMarkup([[reshow_button, reply_button]])
             
             await cq.edit_message_text(
@@ -1045,18 +1046,11 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 reply_markup=new_keyboard
             )
         except Exception:
-            # اگر ادیت پیام با خطا مواجه شد، مشکلی نیست. وضعیت در دیتابیس آپدیت می‌شود.
             pass
 
-    # وضعیت پیام را در دیتابیس به "خوانده شده" تغییر می‌دهیم
-    # این کار بعد از کلیک اول انجام می‌شود و تکرار نخواهد شد.
     if w["status"] != "read":
         async with pool.acquire() as con:
             await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", wid)
-
-# main.py
-
-# ... (بعد از تابع on_show_by_id)
 
 async def on_reshow_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """این تابع فقط برای دکمه «نمایش مجدد» است و پیام را دوباره نشان می‌دهد."""

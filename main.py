@@ -530,69 +530,91 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     iq = update.inline_query
     q = (iq.query or "").strip()
     user = iq.from_user
-
     results = []
-    
-    # --- اصلاح شده: حداقل طول یوزرنیم به 5 تغییر کرد ---
-    usernames = sorted(list(set(re.findall(r"@([A-Za-z0-9_]{5,})", q.lower()))))
-    text = re.sub(r"\s*@([A-Za-z0-9_]{5,})", "", q, flags=re.IGNORECASE).strip()
 
-    # منطق بر اساس تعداد گیرنده‌ها
+    # --- اضافه کردن بلاک try...except برای گرفتن همه خطاها ---
+    try:
+        # --- DEBUG PRINT 1 ---
+        print(f"--- Inline query received: '{q}'")
 
-    # اگر بیش از یک گیرنده وجود داشت -> نجوای گروهی
-    if len(usernames) > 1:
-        token = token_urlsafe(12)
-        async with pool.acquire() as con:
-            await con.execute(
-                "INSERT INTO group_whispers(token, sender_id, text, receiver_usernames) VALUES ($1,$2,$3,$4);",
-                token, user.id, text, usernames
-            )
-        mentions_text = " ".join([f"@{un}" for un in usernames])
-        results.append(
-            InlineQueryResultArticle(
-                id=f"gw_{token}",
-                title=f"🗣️ نجوای گروهی برای {len(usernames)} نفر",
-                description=_preview(text) if text else "بدون متن",
-                input_message_content=InputTextMessageContent(f"🔒 نجوای گروهی برای: {mentions_text}"),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام گروهی", callback_data=f"gws:{token}")]]),
-                thumbnail_url=avatar_url("group"),
-            )
-        )
+        usernames = sorted(list(set(re.findall(r"@([A-Za-z0-9_]{5,})", q.lower()))))
+        text = re.sub(r"\s*@([A-Za-z0-9_]{5,})", "", q, flags=re.IGNORECASE).strip()
 
-    # اگر فقط یک گیرنده وجود داشت -> نجوای تک نفره
-    elif len(usernames) == 1:
-        uname = usernames[0]
-        rid = await try_resolve_user_id_by_username(context, uname)
-        rname = await get_name_for(rid, f"@{uname}") if rid else f"@{uname}"
-        thumb = avatar_url(rname)
-        token = token_urlsafe(12)
-        async with pool.acquire() as con:
-            await con.execute(
-                "INSERT INTO iwhispers(token, sender_id, receiver_id, receiver_username, text, expires_at, reported) VALUES ($1,$2,$3,$4,$5,$6,FALSE);",
-                token, user.id, rid, uname, text, FAR_FUTURE
-            )
-        results.append(
-            InlineQueryResultArticle(
-                id=token,
-                title=rname,
-                description=_preview(text) if text else "بدون متن",
-                input_message_content=InputTextMessageContent(f"🔒 نجوا برای {rname}"),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام", callback_data=f"iws:{token}")]]),
-                thumbnail_url=thumb,
-            )
-        )
-    
-    if not results:
-        help_result = InlineQueryResultArticle(
-            id="help",
-            title="راهنما: ارسال نجوا",
-            description="متن نجوا و سپس یوزرنیم گیرنده(ها) را وارد کنید.",
-            input_message_content=InputTextMessageContent(INLINE_HELP(bot_username=BOT_USERNAME)),
-            thumbnail_url=avatar_url("help"),
-        )
-        results.append(help_result)
+        # --- DEBUG PRINT 2 ---
+        print(f"--- Found {len(usernames)} usernames: {usernames}")
+        print(f"--- Extracted text: '{text}'")
 
-    await iq.answer(results, cache_time=0, is_personal=True)
+        # اگر بیش از یک گیرنده وجود داشت -> نجوای گروهی
+        if len(usernames) > 1:
+            print("--- Logic: Group whisper mode.")
+            token = token_urlsafe(12)
+            print(f"--- DB: Preparing to insert group whisper with token {token}")
+            async with pool.acquire() as con:
+                await con.execute(
+                    "INSERT INTO group_whispers(token, sender_id, text, receiver_usernames) VALUES ($1,$2,$3,$4);",
+                    token, user.id, text, usernames
+                )
+            print("--- DB: Insert successful.")
+            
+            mentions_text = " ".join([f"@{un}" for un in usernames])
+            results.append(
+                InlineQueryResultArticle(
+                    id=f"gw_{token}",
+                    title=f"🗣️ نجوای گروهی برای {len(usernames)} نفر",
+                    description=_preview(text) if text else "بدون متن",
+                    input_message_content=InputTextMessageContent(f"🔒 نجوای گروهی برای: {mentions_text}"),
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام گروهی", callback_data=f"gws:{token}")]]),
+                    thumbnail_url=avatar_url("group"),
+                )
+            )
+            print("--- Result: Appended group whisper article.")
+
+        # اگر فقط یک گیرنده وجود داشت -> نجوای تک نفره
+        elif len(usernames) == 1:
+            print("--- Logic: Single whisper mode.")
+            uname = usernames[0]
+            # ... (بقیه کد این بخش بدون تغییر باقی می‌ماند)
+            rid = await try_resolve_user_id_by_username(context, uname)
+            rname = await get_name_for(rid, f"@{uname}") if rid else f"@{uname}"
+            thumb = avatar_url(rname)
+            token = token_urlsafe(12)
+            async with pool.acquire() as con:
+                await con.execute(
+                    "INSERT INTO iwhispers(token, sender_id, receiver_id, receiver_username, text, expires_at, reported) VALUES ($1,$2,$3,$4,$5,$6,FALSE);",
+                    token, user.id, rid, uname, text, FAR_FUTURE
+                )
+            results.append(
+                InlineQueryResultArticle(
+                    id=token,
+                    title=rname,
+                    description=_preview(text) if text else "بدون متن",
+                    input_message_content=InputTextMessageContent(f"🔒 نجوا برای {rname}"),
+                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام", callback_data=f"iws:{token}")]]),
+                    thumbnail_url=thumb,
+                )
+            )
+            print("--- Result: Appended single whisper article.")
+        
+        if not results:
+            print("--- Logic: No usernames found, showing help.")
+            help_result = InlineQueryResultArticle(
+                id="help",
+                title="راهنما: ارسال نجوا",
+                description="متن نجوا و سپس یوزرنیم گیرنده(ها) را وارد کنید.",
+                input_message_content=InputTextMessageContent(INLINE_HELP(bot_username=BOT_USERNAME)),
+                thumbnail_url=avatar_url("help"),
+            )
+            results.append(help_result)
+
+        await iq.answer(results, cache_time=0, is_personal=True)
+        print("--- Final: Answer sent to Telegram.")
+
+    except Exception as e:
+        # --- این بخش هر خطای پیش‌بینی نشده‌ای را در لاگ چاپ می‌کند ---
+        print(f"!!!!!!!!!! AN UNEXPECTED ERROR OCCURRED in on_inline_query !!!!!!!!!!")
+        print(f"Error Type: {type(e).__name__}")
+        print(f"Error Details: {e}")
+        print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
 
 # گزارش فوری «لحظه ارسال اینلاین»
 async def on_chosen_inline_result(update: Update, context: ContextTypes.DEFAULT_TYPE):

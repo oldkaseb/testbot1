@@ -4260,14 +4260,14 @@ async def help_panel_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
                 [InlineKeyboardButton("دوز (۴ نفره)", callback_data=f"help_game_doz4p_{user.id}")],
                 [InlineKeyboardButton("چهار در یک ردیف", callback_data=f"help_game_connect4_{user.id}")],
                 [InlineKeyboardButton("سنگ کاغذ قیچی", callback_data=f"help_game_rps_{user.id}")],
-                [InlineKeyboardButton("بازی حافظه", callback_data=f"help_game_memory_{user.id}")],
+                #[InlineKeyboardButton("بازی حافظه", callback_data=f"help_game_memory_{user.id}")],
             ])
         
         elif category == "single":
             text = "👤 **راهنمای بازی‌های تک‌نفره:**"
             keyboard.extend([
                 [InlineKeyboardButton("2048", callback_data=f"help_game_2048_{user.id}")],
-                [InlineKeyboardButton("پازل کشویی", callback_data=f"help_game_spuzzle_{user.id}")],
+                #[InlineKeyboardButton("پازل کشویی", callback_data=f"help_game_spuzzle_{user.id}")],
                 [InlineKeyboardButton("بازی جفت‌ها", callback_data=f"help_game_samegame_{user.id}")],
             ])
 

@@ -681,10 +681,23 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = row["text"]
     already_reported = bool(row["reported"])
 
-    # بررسی اینکه آیا کلیک‌کننده، گیرنده اصلی پیام است
+    # بررسی دقیق اینکه آیا کلیک‌کننده، گیرنده اصلی پیام است
     is_receiver = (receiver_id and user.id == receiver_id) or \
                   (not receiver_id and recv_un and (user.username or "").lower() == recv_un)
 
+    # اگر کلیک‌کننده فرستنده یا ادمین بود
+    if user.id == sender_id or user.id in ADMIN_ID:
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(alert_text, show_alert=True)
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
+        # اگر شخص ادمین یا فرستنده باشد، کار همینجا تمام می‌شود و پیام ادیت نمی‌شود
+        return
+
+    # اگر کلیک‌کننده گیرنده اصلی بود
     if is_receiver:
         # اگر آیدی عددی گیرنده مشخص نبود، با اولین کلیکش آن را ثبت می‌کنیم
         if not receiver_id:
@@ -692,72 +705,57 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
             async with pool.acquire() as con:
                 await con.execute("UPDATE iwhispers SET receiver_id=$1 WHERE token=$2;", user.id, token)
 
+        # نمایش محتوای نجوا به گیرنده
         alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
         await cq.answer(alert_text, show_alert=True)
-        
         if len(text) > ALERT_SNIPPET:
             try:
                 await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
             except Exception:
                 pass
 
-        # اگر نجوا قبلا گزارش نشده بود (یعنی خوانده نشده بود)، آن را ادیت کن
+        # ---- بخش کلیدی: ویرایش پیام ----
+        # اگر پیام قبلا خوانده نشده بود، آن را ویرایش کن
         if not already_reported:
-            sender_username = await get_username_for(sender_id)
-            receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
+            sender_name = await get_name_for(sender_id)
+            receiver_name = await get_name_for(receiver_id)
 
             edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
 
+            sender_username = await get_username_for(sender_id)
+            receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
             reply_query = f"@{sender_username} " if sender_username else ""
             resend_query = f"@{receiver_username} " if receiver_username else ""
 
             keyboard = InlineKeyboardMarkup([
                 [
-                    # دکمه پاسخ که یوزرنیم فرستنده اصلی را در کیبورد وارد می‌کند
                     InlineKeyboardButton("پاسخ 🗣", switch_inline_query_current_chat=reply_query),
-                    # دکمه نجوای مجدد که یوزرنیم گیرنده اصلی را در کیبورد وارد می‌کند
                     InlineKeyboardButton("نجوای مجدد 🔁", switch_inline_query_current_chat=resend_query),
-                    # دکمه نمایش مجدد مثل قبل باقی می‌ماند
                     InlineKeyboardButton("نمایش مجدد 👁", callback_data=f"ireshow:{token}"),
                 ]
             ])
             
             try:
+                # --- دستور اصلی ویرایش ---
                 await cq.edit_message_text(
                     text=edited_text,
                     parse_mode=ParseMode.HTML,
                     reply_markup=keyboard
                 )
-            except Exception as e:
-                print(f"Error editing inline message: {e}")
-
-            # ثبت اطلاعات برای گزارش‌دهی و جلوگیری از ادیت مجدد
-            # (منطق قبلی گزارش‌دهی را اینجا حفظ می‌کنیم)
-            try:
+                # پس از ویرایش موفق، آن را در دیتابیس ثبت کن
                 await report_and_save_inline_whisper(context, cq, token, row)
+
             except Exception as e:
-                print(f"Error reporting inline whisper: {e}")
+                # اگر ویرایش با خطا مواجه شد، به کاربر اطلاع بده
+                print(f"خطا در ویرایش پیام اینلاین: {e}")
+                # ما همچنان وضعیت را به خوانده شده تغییر می‌دهیم تا دوباره تلاش برای ویرایش نشود
+                await report_and_save_inline_whisper(context, cq, token, row)
+                await cq.answer("پیام خوانده شد، اما به دلیل قدیمی بودن قابل ویرایش نیست.", show_alert=True)
 
-
-    # اگر کلیک‌کننده فرستنده یا ادمین بود (و گیرنده نبود)
-    elif user.id == sender_id or user.id in ADMIN_ID:
-        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
-        await cq.answer(alert_text, show_alert=True)
-        
-        if len(text) > ALERT_SNIPPET:
-            try:
-                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
-            except Exception:
-                pass
-    
     # اگر کاربر هیچکدام از افراد مجاز نبود
     else:
         await cq.answer("این نجوا متعلق به شما نیست، لطفاً کنجکاوی نکنید!", show_alert=True)
 
-
-# **یک تابع کمکی جدید**
-# این تابع را باید به کد خود اضافه کنید، چون منطق گزارش‌دهی را از تابع بالا جدا کردیم
-# این تابع را می‌توانید قبل از on_inline_show قرار دهید
 async def report_and_save_inline_whisper(context: ContextTypes.DEFAULT_TYPE, cq, token: str, row: dict):
     group_id = cq.message.chat.id
     group_title = group_link_title(getattr(cq.message.chat, "title", "گروه"))

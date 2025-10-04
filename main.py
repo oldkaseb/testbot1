@@ -711,8 +711,9 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         sender_username = await get_username_for(sender_id)
             receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
 
-            # متن پیش‌فرض برای دکمه‌ها
-            # اگر کاربر یوزرنیم داشت، آن را قرار می‌دهیم، در غیر این صورت خالی می‌گذاریم
+            sender_username = await get_username_for(sender_id)
+            receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
+
             reply_query = f"@{sender_username} " if sender_username else ""
             resend_query = f"@{receiver_username} " if receiver_username else ""
 
@@ -720,15 +721,13 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [
                     # دکمه پاسخ که یوزرنیم فرستنده اصلی را در کیبورد وارد می‌کند
                     InlineKeyboardButton("پاسخ 🗣", switch_inline_query_current_chat=reply_query),
-                    
                     # دکمه نجوای مجدد که یوزرنیم گیرنده اصلی را در کیبورد وارد می‌کند
                     InlineKeyboardButton("نجوای مجدد 🔁", switch_inline_query_current_chat=resend_query),
-                    
                     # دکمه نمایش مجدد مثل قبل باقی می‌ماند
                     InlineKeyboardButton("نمایش مجدد 👁", callback_data=f"ireshow:{token}"),
                 ]
             ])
-    
+            
             try:
                 await cq.edit_message_text(
                     text=edited_text,

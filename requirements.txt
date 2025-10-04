@@ -1,5 +1,2 @@
-python-telegram-bot==20.8
-psycopg2-binary
-pillow
-arabic_reshaper
-python-bidi
+python-telegram-bot==20.7
+asyncpg==0.29.0

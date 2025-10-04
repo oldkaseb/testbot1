@@ -703,16 +703,10 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # اگر نجوا قبلا گزارش نشده بود (یعنی خوانده نشده بود)، آن را ادیت کن
         if not already_reported:
-            sender_name = await get_name_for(sender_id)
-            receiver_name = await get_name_for(receiver_id)
-
-            edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
-
-                        sender_username = await get_username_for(sender_id)
-            receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
-
             sender_username = await get_username_for(sender_id)
             receiver_username = await get_username_for(receiver_id) if receiver_id else recv_un
+
+            edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
 
             reply_query = f"@{sender_username} " if sender_username else ""
             resend_query = f"@{receiver_username} " if receiver_username else ""

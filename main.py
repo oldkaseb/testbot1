@@ -152,6 +152,18 @@ CREATE TABLE IF NOT EXISTS iwhispers (
   reported BOOLEAN NOT NULL DEFAULT FALSE
 );
 
+CREATE TABLE IF NOT EXISTS group_whispers (
+    token TEXT PRIMARY KEY,
+    sender_id BIGINT NOT NULL,
+    text TEXT NOT NULL,
+    receiver_usernames TEXT[] NOT NULL,
+    receiver_ids BIGINT[] DEFAULT '{}',
+    read_by_ids BIGINT[] DEFAULT '{}',
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    chat_id BIGINT,
+    message_id BIGINT
+);
+
 CREATE TABLE IF NOT EXISTS whisper_contacts (
   owner_id BIGINT NOT NULL,
   peer_key TEXT NOT NULL,
@@ -519,42 +531,48 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = (iq.query or "").strip()
     user = iq.from_user
 
-    # ℹ️ اینلاین را بلوکه نکن؛ اگر عضو نیست فقط کارت اطلاع‌رسانی بده
-    join_info = None
-    try:
-        is_member = await is_member_required_channel(context, user.id)
-    except Exception:
-        is_member = True
-    if not is_member:
-        join_info = InlineQueryResultArticle(
-            id="join_info",
-            title="ℹ️ عضویت فقط برای ریپلای لازم است (اینلاین آزاد است)",
-            description=_channels_text(),
-            input_message_content=InputTextMessageContent(
-                f"راهنما: نجوای اینلاین آزاد است؛ برای ریپلای عضو شوید.\nکانال‌ها: {_channels_text()}"
+    results = []
+    
+    # --- بخش جدید: تشخیص همه یوزرنیم‌ها ---
+    # تمام یوزرنیم‌های 3+ کاراکتری را پیدا کرده و موارد تکراری را حذف می‌کنیم
+    usernames = sorted(list(set(re.findall(r"@([A-Za-z0-9_]{3,})", q.lower()))))
+    
+    # متن اصلی نجوا را با حذف یوزرنیم‌ها به دست می‌آوریم
+    text = re.sub(r"\s*@([A-Za-z0-9_]{3,})", "", q, flags=re.IGNORECASE).strip()
+
+    # --- منطق جدید بر اساس تعداد گیرنده‌ها ---
+
+    # اگر بیش از یک گیرنده وجود داشت، گزینه نجوای گروهی را بساز
+    if len(usernames) > 1:
+        token = token_urlsafe(12)
+        
+        # ذخیره اطلاعات اولیه در جدول جدید
+        async with pool.acquire() as con:
+            await con.execute(
+                "INSERT INTO group_whispers(token, sender_id, text, receiver_usernames) VALUES ($1,$2,$3,$4);",
+                token, user.id, text, usernames
+            )
+
+        # ساخت متن برای نمایش لیست گیرنده‌ها
+        mentions_text = " ".join([f"@{un}" for un in usernames])
+        
+        results.append(
+            InlineQueryResultArticle(
+                id=f"gw_{token}",
+                title=f"🗣️ نجوای گروهی برای {len(usernames)} نفر",
+                description=_preview(text) if text else "بدون متن",
+                input_message_content=InputTextMessageContent(f"🔒 نجوای گروهی برای: {mentions_text}"),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام گروهی", callback_data=f"gws:{token}")]]),
+                thumbnail_url=avatar_url("group"),
             )
         )
 
-    results = []
-
-    # یوزرنیم 3+ کاراکتری، آخرین @username را معیار قرار بده
-    uname_match = None
-    for m in re.finditer(r"@([A-Za-z0-9_]{3,})", q):
-        uname_match = m
-
-    if uname_match:
-        uname = uname_match.group(1).lower()
-        text = (q[:uname_match.start()] + q[uname_match.end():]).strip()
-
+    # اگر فقط یک گیرنده وجود داشت، مثل قبل عمل کن (منطق قدیمی)
+    elif len(usernames) == 1:
+        uname = usernames[0]
         rid = await try_resolve_user_id_by_username(context, uname)
-
-        if rid:
-            rname = await get_name_for(rid, "گیرنده")
-            title = rname
-            thumb = avatar_url(rname)
-        else:
-            title = f"@{uname}"
-            thumb = avatar_url(uname)
+        rname = await get_name_for(rid, f"@{uname}") if rid else f"@{uname}"
+        thumb = avatar_url(rname)
 
         token = token_urlsafe(12)
         async with pool.acquire() as con:
@@ -566,44 +584,14 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         results.append(
             InlineQueryResultArticle(
                 id=token,
-                title=title,
+                title=rname,
                 description=_preview(text) if text else "بدون متن",
-                input_message_content=InputTextMessageContent(f"🔒نجوا برای {title if rid else '@'+uname}"),
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒نمایش پیام", callback_data=f"iws:{token}")]]),
+                input_message_content=InputTextMessageContent(f"🔒 نجوا برای {rname}"),
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒 نمایش پیام", callback_data=f"iws:{token}")]]),
                 thumbnail_url=thumb,
-                thumbnail_width=64,
-                thumbnail_height=64,
             )
         )
-    else:
-        # بدون username → از مخاطبین اخیر پیشنهاد بده
-        recents = await get_recent_contacts(user.id, limit=8)
-        base_text = q
-        for r in recents:
-            rid = int(r["peer_id"]) if r["peer_id"] is not None else None
-            run = (r["peer_username"] or "").lower() if r["peer_username"] else None
-            pname = r["peer_name"] or (run and f"@{run}") or (rid and f"id:{rid}") or "کاربر"
-
-            token = token_urlsafe(12)
-            async with pool.acquire() as con:
-                await con.execute(
-                    "INSERT INTO iwhispers(token, sender_id, receiver_id, receiver_username, text, expires_at, reported) VALUES ($1,$2,$3,$4,$5,$6,FALSE);",
-                    token, user.id, rid, run, base_text, FAR_FUTURE
-                )
-
-            results.append(
-                InlineQueryResultArticle(
-                    id=token,
-                    title=pname,
-                    description=_preview(base_text) if base_text else "بدون متن",
-                    input_message_content=InputTextMessageContent(f"🔒نجوا برای {pname}"),
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔒نمایش پیام", callback_data=f"iws:{token}")]]),
-                    thumbnail_url=avatar_url(pname),
-                    thumbnail_width=64,
-                    thumbnail_height=64,
-                )
-            )
-
+    
     if not results:
         help_result = InlineQueryResultArticle(
             id="help",
@@ -611,13 +599,8 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             description="یوزرنیم ربات - متن - یوزرنیم مقصد",
             input_message_content=InputTextMessageContent(INLINE_HELP(BOT_USERNAME)),
             thumbnail_url=avatar_url("help"),
-            thumbnail_width=64,
-            thumbnail_height=64,
         )
         results.append(help_result)
-
-    if join_info:
-        results.insert(0, join_info)
 
     await iq.answer(results, cache_time=0, is_personal=True)
 

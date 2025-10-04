@@ -533,29 +533,21 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     results = []
     
-    # --- بخش جدید: تشخیص همه یوزرنیم‌ها ---
-    # تمام یوزرنیم‌های 3+ کاراکتری را پیدا کرده و موارد تکراری را حذف می‌کنیم
-    usernames = sorted(list(set(re.findall(r"@([A-Za-z0-9_]{3,})", q.lower()))))
-    
-    # متن اصلی نجوا را با حذف یوزرنیم‌ها به دست می‌آوریم
-    text = re.sub(r"\s*@([A-Za-z0-9_]{3,})", "", q, flags=re.IGNORECASE).strip()
+    # --- اصلاح شده: حداقل طول یوزرنیم به 5 تغییر کرد ---
+    usernames = sorted(list(set(re.findall(r"@([A-Za-z0-9_]{5,})", q.lower()))))
+    text = re.sub(r"\s*@([A-Za-z0-9_]{5,})", "", q, flags=re.IGNORECASE).strip()
 
-    # --- منطق جدید بر اساس تعداد گیرنده‌ها ---
+    # منطق بر اساس تعداد گیرنده‌ها
 
-    # اگر بیش از یک گیرنده وجود داشت، گزینه نجوای گروهی را بساز
+    # اگر بیش از یک گیرنده وجود داشت -> نجوای گروهی
     if len(usernames) > 1:
         token = token_urlsafe(12)
-        
-        # ذخیره اطلاعات اولیه در جدول جدید
         async with pool.acquire() as con:
             await con.execute(
                 "INSERT INTO group_whispers(token, sender_id, text, receiver_usernames) VALUES ($1,$2,$3,$4);",
                 token, user.id, text, usernames
             )
-
-        # ساخت متن برای نمایش لیست گیرنده‌ها
         mentions_text = " ".join([f"@{un}" for un in usernames])
-        
         results.append(
             InlineQueryResultArticle(
                 id=f"gw_{token}",
@@ -567,20 +559,18 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         )
 
-    # اگر فقط یک گیرنده وجود داشت، مثل قبل عمل کن (منطق قدیمی)
+    # اگر فقط یک گیرنده وجود داشت -> نجوای تک نفره
     elif len(usernames) == 1:
         uname = usernames[0]
         rid = await try_resolve_user_id_by_username(context, uname)
         rname = await get_name_for(rid, f"@{uname}") if rid else f"@{uname}"
         thumb = avatar_url(rname)
-
         token = token_urlsafe(12)
         async with pool.acquire() as con:
             await con.execute(
                 "INSERT INTO iwhispers(token, sender_id, receiver_id, receiver_username, text, expires_at, reported) VALUES ($1,$2,$3,$4,$5,$6,FALSE);",
                 token, user.id, rid, uname, text, FAR_FUTURE
             )
-
         results.append(
             InlineQueryResultArticle(
                 id=token,
@@ -595,9 +585,9 @@ async def on_inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not results:
         help_result = InlineQueryResultArticle(
             id="help",
-            title="راهنما",
-            description="یوزرنیم ربات - متن - یوزرنیم مقصد",
-            input_message_content=InputTextMessageContent(INLINE_HELP(BOT_USERNAME)),
+            title="راهنما: ارسال نجوا",
+            description="متن نجوا و سپس یوزرنیم گیرنده(ها) را وارد کنید.",
+            input_message_content=InputTextMessageContent(INLINE_HELP(bot_username=BOT_USERNAME)),
             thumbnail_url=avatar_url("help"),
         )
         results.append(help_result)

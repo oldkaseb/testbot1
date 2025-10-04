@@ -316,16 +316,85 @@ INTRO_TEXT = (
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != ChatType.PRIVATE:
         return
-    await upsert_user(update.effective_user)
+    
+    user = update.effective_user
+    await upsert_user(user)
 
-    ok = await is_member_required_channel(context, update.effective_user.id)
+    # --- بخش جدید برای مدیریت لینک‌های مستقیم (Deep Linking) ---
+    if context.args:
+        payload = context.args[0]
+        async with pool.acquire() as con:
+
+            # مدیریت درخواست پاسخ
+            if payload.startswith("reply_"):
+                try:
+                    wid = int(payload.split("_")[1])
+                    w = await con.fetchrow("SELECT group_id, sender_id, receiver_id FROM whispers WHERE id=$1;", wid)
+                    if not w: raise ValueError("Whisper not found")
+                    
+                    if user.id != int(w["receiver_id"]):
+                        await update.message.reply_text("شما نمی‌توانید به این نجوا پاسخ دهید (فقط گیرنده اصلی).")
+                        return
+
+                    group_id, sender_id, receiver_id = int(w["group_id"]), int(w["sender_id"]), int(w["receiver_id"])
+                    await con.execute(
+                        """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at)
+                           VALUES ($1, $2, $3, NOW(), $4) ON CONFLICT (sender_id) DO UPDATE SET
+                             group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id, created_at=NOW();""",
+                        receiver_id, group_id, sender_id, FAR_FUTURE
+                    )
+
+                    target_mention = mention_html(sender_id, await get_name_for(sender_id))
+                    group_title = group_link_title((await context.bot.get_chat(group_id)).title)
+                    await update.message.reply_text(
+                        f"⌛️ در حال پاسخ به نجوای {target_mention} در گروه «{group_title}» هستید.\n\n"
+                        f"لطفاً متن پاسخ خود را اینجا بفرستید.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+                except Exception:
+                    await update.message.reply_text("خطایی در پردازش درخواست پاسخ رخ داد. ممکن است نجوا قدیمی باشد.")
+                    return
+
+            # مدیریت درخواست نجوای مجدد
+            if payload.startswith("rewhipser_"):
+                try:
+                    wid = int(payload.split("_")[1])
+                    w = await con.fetchrow("SELECT group_id, sender_id, receiver_id FROM whispers WHERE id=$1;", wid)
+                    if not w: raise ValueError("Whisper not found")
+
+                    if user.id != int(w["sender_id"]):
+                        await update.message.reply_text("شما نمی‌توانید نجوای مجدد ارسال کنید (فقط فرستنده اصلی).")
+                        return
+
+                    group_id, sender_id, receiver_id = int(w["group_id"]), int(w["sender_id"]), int(w["receiver_id"])
+                    await con.execute(
+                        """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at)
+                           VALUES ($1, $2, $3, NOW(), $4) ON CONFLICT (sender_id) DO UPDATE SET
+                             group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id, created_at=NOW();""",
+                        sender_id, group_id, receiver_id, FAR_FUTURE
+                    )
+                    
+                    target_mention = mention_html(receiver_id, await get_name_for(receiver_id))
+                    group_title = group_link_title((await context.bot.get_chat(group_id)).title)
+                    await update.message.reply_text(
+                        f"🤫 در حال ارسال نجوای مجدد به {target_mention} در گروه «{group_title}» هستید.\n\n"
+                        f"لطفاً متن نجوای خود را اینجا بفرستید.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
+                except Exception:
+                    await update.message.reply_text("خطایی در پردازش درخواست نجوای مجدد رخ داد. ممکن است نجوا قدیمی باشد.")
+                    return
+
+    # --- کدهای قبلی تابع استارت برای حالت عادی ---
+    ok = await is_member_required_channel(context, user.id)
     if ok:
         await update.message.reply_text(INTRO_TEXT, reply_markup=start_keyboard_post())
-        # اگر پندینگ فعال دارد، پیام انتظار بفرست
         async with pool.acquire() as con:
             row = await con.fetchrow(
                 "SELECT group_id, receiver_id FROM pending WHERE sender_id=$1 AND expires_at>NOW();",
-                update.effective_user.id
+                user.id
             )
         if row:
             group_id = int(row["group_id"])
@@ -337,7 +406,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 gtitle = "گروه"
             receiver_name = await get_name_for(receiver_id, "گیرنده")
             await update.message.reply_text(
-                f"⌛️ منتظر نجوای توام ها ، بفرست دیگه…\n"
+                f"⌛️ منتظر نجوای توام ها ، بفرستد دیگه…\n"
                 f"هدف: {mention_html(receiver_id, receiver_name)} در «{gtitle}»\n"
                 f"فقط متن بفرستی ها بی ادب نباش",
                 parse_mode=ParseMode.HTML
@@ -1019,29 +1088,35 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception:
             pass
 
+    # فقط زمانی که گیرنده پیام را برای اولین بار می‌خواند، پیام در گروه ویرایش می‌شود
     if w["status"] != "read" and user.id == receiver_id:
         try:
-            # 🔽 ------- تغییر اصلی اینجاست ------- 🔽
             sender_name = await get_name_for(sender_id, "فرستنده")
             sender_mention = mention_html(sender_id, sender_name)
-            
-            # نام گیرنده را هم برای نمایش در پیام می‌گیریم
             receiver_name = await get_name_for(receiver_id, "گیرنده")
             receiver_mention = mention_html(receiver_id, receiver_name)
             
-            # متن جدید پیام با هر دو منشن
-            new_text = (
-                f"✅ نجوای {sender_mention} "
-                f"به {receiver_mention} خوانده شد."
+            new_text = f"✅ نجوای {sender_mention} به {receiver_mention} خوانده شد."
+            
+            # --- بازنویسی دکمه‌ها ---
+            # این دکمه مثل قبل باقی می‌ماند چون یک عملیات داخلی است
+            reshow_button = InlineKeyboardButton("🔒 نمایش مجدد", callback_data=f"reshow:{wid}")
+            
+            # دکمه پاسخ که کاربر را مستقیم به پیوی ربات با یک پارامتر خاص می‌برد
+            reply_button = InlineKeyboardButton(
+                "✍️ پاسخ",
+                url=f"https://t.me/{BOT_USERNAME}?start=reply_{wid}"
+            )
+            # دکمه نجوای مجدد که کاربر را مستقیم به پیوی ربات می‌برد
+            rewhipser_button = InlineKeyboardButton(
+                "🤫 نجوای مجدد",
+                url=f"https://t.me/{BOT_USERNAME}?start=rewhipser_{wid}"
             )
             
-            reshow_button = InlineKeyboardButton("🔒 نمایش مجدد", callback_data=f"reshow:{wid}")
-            reply_button = InlineKeyboardButton("✍️ پاسخ", callback_data=f"reply:{sender_id}:{receiver_id}")
-            rewhipser_button = InlineKeyboardButton("🤫 نجوای مجدد", callback_data=f"rewhipser:{sender_id}:{receiver_id}")
-            
+            # چیدمان جدید دکمه‌ها
             new_keyboard = InlineKeyboardMarkup([
-                [rewhipser_button, reply_button], # ردیف اول
-                [reshow_button]             # ردیف دوم
+                [reshow_button],
+                [reply_button, rewhipser_button]
             ])
             
             await cq.edit_message_text(
@@ -1049,57 +1124,13 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode=ParseMode.HTML,
                 reply_markup=new_keyboard
             )
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Error editing message: {e}") # برای خطایابی بهتر
 
+    # وضعیت پیام در دیتابیس به "خوانده شده" تغییر می‌کند
     if w["status"] != "read":
         async with pool.acquire() as con:
             await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", wid)
-
-async def on_rewhipser_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """این تابع فرآیند ارسال نجوای مجدد را برای فرستنده اصلی آغاز می‌کند."""
-    cq = update.callback_query
-    user = update.effective_user
-    chat = update.effective_chat
-
-    try:
-        _, sender_id, receiver_id = cq.data.split(":")
-        sender_id, receiver_id = int(sender_id), int(receiver_id)
-    except Exception:
-        return
-
-    # شرط امنیتی: فقط فرستنده اصلی می‌تواند از این دکمه استفاده کند
-    if user.id != sender_id:
-        await cq.answer("این دکمه برای شما (فرستنده اصلی نجوا) است.", show_alert=True)
-        return
-        
-    await cq.answer("برای ارسال نجوای مجدد به پیوی ربات مراجعه کنید.")
-
-    # ایجاد وضعیت "در انتظار" برای ارسال نجوای جدید
-    async with pool.acquire() as con:
-        await con.execute(
-            """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at, reply_to_msg_id)
-               VALUES ($1, $2, $3, NOW(), $4, $5)
-               ON CONFLICT (sender_id) DO UPDATE SET
-                 group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id,
-                 created_at=NOW(), expires_at=$4, reply_to_msg_id=$5;""",
-            user.id, chat.id, receiver_id, FAR_FUTURE, cq.message.message_id
-        )
-
-    # ارسال پیام راهنما در پیوی فرستنده
-    try:
-        receiver_name = await get_name_for(receiver_id, "گیرنده")
-        receiver_mention = mention_html(receiver_id, receiver_name)
-        group_title = group_link_title(chat.title)
-        
-        await context.bot.send_message(
-            chat_id=user.id,
-            text=(f"🤫 در حال ارسال نجوای مجدد به {receiver_mention} در گروه «{group_title}» هستید.\n\n"
-                  f"لطفاً متن نجوای خود را اینجا بفرستید."),
-            parse_mode=ParseMode.HTML
-        )
-    except Exception:
-        pass
 
 async def on_reshow_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """این تابع فقط برای دکمه «نمایش مجدد» است و پیام را دوباره نشان می‌دهد."""
@@ -1134,70 +1165,6 @@ async def on_reshow_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if len(text) > ALERT_SNIPPET:
         try: await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
         except Exception: pass
-
-
-async def on_reply_button(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """این تابع فرآیند پاسخ به نجوا را آغاز می‌کند."""
-    cq = update.callback_query
-    user = update.effective_user
-    chat = update.effective_chat
-    try:
-        _, target_id, replier_id = cq.data.split(":")
-        target_id, replier_id = int(target_id), int(replier_id)
-    except Exception:
-        return
-
-    # شرط امنیتی: فقط گیرنده اصلی نجوا (که حالا پاسخ‌دهنده است) می‌تواند پاسخ دهد
-    if user.id != replier_id:
-        await cq.answer("این دکمه برای شما نیست.", show_alert=True)
-        return
-
-    if MANDATORY_CHANNELS and not await is_member_required_channel(context, user.id):
-        await cq.answer(f"برای پاسخ دادن باید ابتدا در کانال ما عضو شوید: {_channels_text()}", show_alert=True)
-        return
-
-    await cq.answer("لطفاً برای ارسال پاسخ به پیوی ربات مراجعه کنید.")
-    async with pool.acquire() as con:
-        await con.execute(
-            """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at, reply_to_msg_id)
-               VALUES ($1, $2, $3, NOW(), $4, $5)
-               ON CONFLICT (sender_id) DO UPDATE SET
-                 group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id,
-                 created_at=NOW(), expires_at=$4, reply_to_msg_id=$5;""",
-            user.id, chat.id, target_id, FAR_FUTURE, cq.message.message_id
-        )
-
-    target_name = await get_name_for(target_id, "کاربر")
-    target_mention = mention_html(target_id, target_name)
-    replier_mention = mention_html(user.id, user.first_name)
-
-    bot_username = BOT_USERNAME or "Secret_RhinoSoul_Bot" # استفاده از یوزرنیم ربات
-    go_to_pv_button = InlineKeyboardButton(
-        "✍️ ارسال پاسخ در پیوی",
-        url=f"https://t.me/{bot_username}?start=reply"
-    )
-    keyboard = InlineKeyboardMarkup([[go_to_pv_button]])
-    
-    # پیام راهنما در گروه (این بخش اختیاری است، می‌توانید حذفش کنید اگر نمی‌خواهید گروه شلوغ شود)
-    sent_guide = await context.bot.send_message(
-        chat_id=chat.id,
-        text=f"{replier_mention}، شما درخواست پاسخ به نجوای {target_mention} را دادید. لطفاً پیام خود را به پیوی من بفرستید.",
-        parse_mode=ParseMode.HTML
-    )
-    schedule_delete(context, chat.id, sent_guide.message_id, 60) # پیام بعد از ۶۰ ثانیه پاک شود
-
-    try:
-        group_title = group_link_title(chat.title)
-        await context.bot.send_message(
-        chat_id=chat.id,
-        text=f"{replier_mention}، برای پاسخ به نجوای {target_mention}، به پیوی ربات مراجعه کنید.",
-        parse_mode=ParseMode.HTML,
-        reply_to_message_id=cq.message.message_id,
-        reply_markup=keyboard  # دکمه به پیام اضافه شد
-    )
-    except Exception:
-        pass
-
 # ---------- نمایش پیام (سازگاری قدیمی) ----------
 async def on_show_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cq = update.callback_query
@@ -1367,8 +1334,6 @@ def main():
     app.add_handler(CallbackQueryHandler(on_show_cb, pattern=r"^show:\-?\d+:\d+:\d+$"))
 
     app.add_handler(CallbackQueryHandler(on_reshow_button, pattern=r"^reshow:\d+$"))
-    app.add_handler(CallbackQueryHandler(on_reply_button, pattern=r"^reply:\d+:\d+$"))
-    app.add_handler(CallbackQueryHandler(on_rewhipser_button, pattern=r"^rewhipser:\d+:\d+$"))
     
     # دکمهٔ بررسی عضویت در گروه
     app.add_handler(CallbackQueryHandler(on_checksub_group, pattern=r"^gjchk:\d+:-?\d+:\d+$"))

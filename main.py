@@ -31,9 +31,9 @@ import asyncpg
 
 # --------- تنظیمات از محیط ---------
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-ADMIN_ID =7662192190,6041119040,7742663428
+ADMIN_ID ={7662192190,6041119040,7742663428}
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
-READER_ID =7662192190,6041119040,7742663428
+READER_ID ={7662192190,6041119040,7742663428}
 
 # سقف نصب در گروه‌ها
 MAX_GROUPS = int(os.environ.get("MAX_GROUPS", "100"))
@@ -170,6 +170,7 @@ ALTER TABLE pending ADD COLUMN IF NOT EXISTS reply_to_msg_id BIGINT;
 ALTER TABLE iwhispers ADD COLUMN IF NOT EXISTS receiver_id BIGINT;
 ALTER TABLE iwhispers ADD COLUMN IF NOT EXISTS receiver_username TEXT;
 ALTER TABLE iwhispers ADD COLUMN IF NOT EXISTS reported BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE iwhispers ADD COLUMN IF NOT EXISTS chat_id BIGINT;
 """
 
 async def init_db():
@@ -312,21 +313,150 @@ INTRO_TEXT = (
     "RHINOSOUL تیم برنامه نویسی راینوسول"
 )
 
+async def on_reshow(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    cq = update.callback_query
+    user = update.effective_user
+    
+    try:
+        action, value = cq.data.split(":", 1)
+    except Exception:
+        return
+
+    text = None
+    async with pool.acquire() as con:
+        if action == "reshow":
+            wid = int(value)
+            row = await con.fetchrow("SELECT sender_id, receiver_id, text FROM whispers WHERE id=$1;", wid)
+            if row and (user.id in (row['sender_id'], row['receiver_id']) or user.id in ADMIN_ID):
+                text = row['text']
+        
+        elif action == "ireshow":
+            token = value
+            row = await con.fetchrow("SELECT sender_id, receiver_id, text FROM iwhispers WHERE token=$1;", token)
+            # برای نجوای اینلاین چون شاید گیرنده با یوزرنیم بوده، چک کردنش سخت‌تره، فعلا به همین اکتفا می‌کنیم
+            if row and (user.id == row['sender_id'] or user.id in ADMIN_ID or user.id == row['receiver_id']):
+                 text = row['text']
+
+    if text:
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(alert_text, show_alert=True)
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
+    else:
+        await cq.answer("شما مجاز به مشاهده این نجوا نیستید.", show_alert=True)
+
 # ---------- /start ----------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != ChatType.PRIVATE:
         return
-    await upsert_user(update.effective_user)
+    
+    user = update.effective_user
+    await upsert_user(user)
 
-    ok = await is_member_required_channel(context, update.effective_user.id)
+    # --- بخش جدید: مدیریت دیپ لینک ---
+    if context.args:
+        payload = context.args[0]
+        
+        # فرمت: reply_WID یا resend_WID
+        if payload.startswith(("reply_", "resend_")):
+            try:
+                action, wid = payload.split("_", 1)
+                wid = int(wid)
+                
+                async with pool.acquire() as con:
+                    w = await con.fetchrow("SELECT sender_id, receiver_id, group_id FROM whispers WHERE id=$1;", wid)
+
+                if not w:
+                    await update.message.reply_text("این نجوا دیگر معتبر نیست.")
+                    return
+
+                original_sender_id = w['sender_id']
+                original_receiver_id = w['receiver_id']
+                group_id = w['group_id']
+
+                is_authorized = (action == "reply" and user.id == original_receiver_id) or \
+                                (action == "resend" and user.id == original_sender_id)
+
+                if not is_authorized:
+                    await update.message.reply_text("شما مجاز به انجام این کار نیستید.")
+                    return
+                
+                new_receiver_id = original_sender_id if action == "reply" else original_receiver_id
+                
+                async with pool.acquire() as con:
+                    await con.execute(
+                        """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at)
+                           VALUES ($1,$2,$3,NOW(),$4)
+                           ON CONFLICT (sender_id) DO UPDATE SET
+                               group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id, created_at=NOW(), expires_at=$4;""",
+                        user.id, group_id, new_receiver_id, FAR_FUTURE
+                    )
+                
+                receiver_name = await get_name_for(new_receiver_id)
+                action_text = "پاسخ" if action == "reply" else "نجوای مجدد"
+                await update.message.reply_text(
+                    f"✅ بسیار خب! لطفاً متن **{action_text}** خود را برای {mention_html(new_receiver_id, receiver_name)} ارسال کنید.",
+                    parse_mode=ParseMode.HTML
+                )
+                return # پایان کار برای دیپ لینک
+            except Exception:
+                await update.message.reply_text("خطایی در پردازش درخواست شما رخ داد.")
+                return
+
+        # فرمت: ireply_TOKEN یا iresend_TOKEN
+        if payload.startswith(("ireply_", "iresend_")):
+            try:
+                action, token = payload.split("_", 1)
+                
+                async with pool.acquire() as con:
+                    w = await con.fetchrow("SELECT sender_id, receiver_id, chat_id FROM iwhispers WHERE token=$1;", token)
+
+                if not w or not w['chat_id']:
+                    await update.message.reply_text("این نجوای اینلاین دیگر معتبر نیست یا در گروهی خوانده نشده.")
+                    return
+
+                original_sender_id = w['sender_id']
+                original_receiver_id = w['receiver_id']
+                group_id = w['chat_id']
+
+                is_authorized = (action == "ireply" and user.id == original_receiver_id) or \
+                                (action == "iresend" and user.id == original_sender_id)
+
+                if not is_authorized:
+                    await update.message.reply_text("شما مجاز به انجام این کار نیستید.")
+                    return
+                
+                new_receiver_id = original_sender_id if action == "ireply" else original_receiver_id
+                
+                async with pool.acquire() as con:
+                    await con.execute(
+                        """INSERT INTO pending (sender_id, group_id, receiver_id, created_at, expires_at)
+                           VALUES ($1,$2,$3,NOW(),$4)
+                           ON CONFLICT (sender_id) DO UPDATE SET
+                               group_id=EXCLUDED.group_id, receiver_id=EXCLUDED.receiver_id, created_at=NOW(), expires_at=$4;""",
+                        user.id, group_id, new_receiver_id, FAR_FUTURE
+                    )
+                
+                receiver_name = await get_name_for(new_receiver_id)
+                action_text = "پاسخ" if action == "ireply" else "نجوای مجدد"
+                await update.message.reply_text(
+                    f"✅ بسیار خب! لطفاً متن **{action_text}** خود را برای {mention_html(new_receiver_id, receiver_name)} ارسال کنید.",
+                    parse_mode=ParseMode.HTML
+                )
+                return # پایان کار برای دیپ لینک
+            except Exception:
+                await update.message.reply_text("خطایی در پردازش درخواست شما رخ داد.")
+                return
+
+    # --- بخش قبلی کد شما برای start معمولی ---
+    ok = await is_member_required_channel(context, user.id)
     if ok:
         await update.message.reply_text(INTRO_TEXT, reply_markup=start_keyboard_post())
-        # اگر پندینگ فعال دارد، پیام انتظار بفرست
         async with pool.acquire() as con:
-            row = await con.fetchrow(
-                "SELECT group_id, receiver_id FROM pending WHERE sender_id=$1 AND expires_at>NOW();",
-                update.effective_user.id
-            )
+            row = await con.fetchrow("SELECT group_id, receiver_id FROM pending WHERE sender_id=$1 AND expires_at>NOW();", user.id)
         if row:
             group_id = int(row["group_id"])
             receiver_id = int(row["receiver_id"])
@@ -540,6 +670,7 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "SELECT token, sender_id, receiver_id, receiver_username, text, reported FROM iwhispers WHERE token=$1;",
             token
         )
+    
     if not row:
         await cq.answer("این نجوا نامعتبر است.", show_alert=True)
         return
@@ -549,71 +680,118 @@ async def on_inline_show(update: Update, context: ContextTypes.DEFAULT_TYPE):
     recv_un = (row["receiver_username"] or "").lower() or None
     text = row["text"]
     already_reported = bool(row["reported"])
-  
-    allowed = (user.id == sender_id) or (receiver_id and user.id == receiver_id) or ((user.username or "").lower() == (recv_un or "")) or (user.id in ADMIN_ID)
-    
-    if not allowed:
-        await cq.answer("فضولی نکن این پیام رو نمیتونی ببینی", show_alert=True)
-        return
 
-    alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + " …")
-    await cq.answer(alert_text, show_alert=True)
-    if len(text) > ALERT_SNIPPET:
-        try:
-            await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
-        except Exception:
-            pass
+    # بررسی اینکه آیا کلیک‌کننده، گیرنده اصلی پیام است
+    is_receiver = (receiver_id and user.id == receiver_id) or \
+                  (not receiver_id and recv_un and (user.username or "").lower() == recv_un)
 
-    if not already_reported:
-        group_id = cq.message.chat.id
-        group_title = group_link_title(getattr(cq.message.chat, "title", "گروه"))
-
-        rid = receiver_id
-        run = recv_un
-        if not rid and (user.username or "").lower() == (run or ""):
-            rid = user.id
-        if not rid and run:
-            rid = await try_resolve_user_id_by_username(context, run)
-
-        sender_name = await get_name_for(sender_id, "فرستنده")
-        if rid:
-            receiver_name = await get_name_for(int(rid), "گیرنده")
-            run_final = run or (await get_username_for(int(rid))) or None
-        else:
-            receiver_name = (run or "گیرنده")
-            run_final = run
-
-        try:
+    if is_receiver:
+        # اگر آیدی عددی گیرنده مشخص نبود، با اولین کلیکش آن را ثبت می‌کنیم
+        if not receiver_id:
+            receiver_id = user.id
             async with pool.acquire() as con:
-                if rid:
-                    exists = await con.fetchval(
-                        "SELECT 1 FROM whispers WHERE group_id=$1 AND sender_id=$2 AND receiver_id=$3 AND text=$4 AND message_id=$5 LIMIT 1;",
-                        group_id, sender_id, int(rid), text, cq.message.message_id
-                    )
-                    if not exists:
-                        await con.execute(
-                            """INSERT INTO whispers (group_id, sender_id, receiver_id, text, status, message_id)
-                               VALUES ($1,$2,$3,$4,'sent',$5);""",
-                            group_id, sender_id, int(rid), text, cq.message.message_id
-                        )
-                await con.execute("UPDATE iwhispers SET reported=TRUE WHERE token=$1;", token)
+                await con.execute("UPDATE iwhispers SET receiver_id=$1 WHERE token=$2;", user.id, token)
 
-            await upsert_contact(sender_id, int(rid) if rid else None, run_final, receiver_name if rid else (run_final or "کاربر"))
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(alert_text, show_alert=True)
+        
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
 
-            await secret_report(
-                context,
-                group_id=group_id,
-                sender_id=sender_id,
-                receiver_id=rid,
-                text=text,
-                group_title=group_title,
-                sender_name=sender_name,
-                receiver_name=receiver_name,
-                origin="inline",
-                receiver_username_fallback=run_final
+        # اگر نجوا قبلا گزارش نشده بود (یعنی خوانده نشده بود)، آن را ادیت کن
+        if not already_reported:
+            sender_name = await get_name_for(sender_id)
+            receiver_name = await get_name_for(receiver_id)
+
+            edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
+
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("پاسخ 🗣", url=f"https://t.me/{BOT_USERNAME}?start=ireply_{token}"),
+                    InlineKeyboardButton("نجوای مجدد 🔁", url=f"https://t.me/{BOT_USERNAME}?start=iresend_{token}"),
+                    InlineKeyboardButton("نمایش مجدد 👁", callback_data=f"ireshow:{token}"),
+                ]
+            ])
+
+            try:
+                await cq.edit_message_text(
+                    text=edited_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                print(f"Error editing inline message: {e}")
+
+            # ثبت اطلاعات برای گزارش‌دهی و جلوگیری از ادیت مجدد
+            # (منطق قبلی گزارش‌دهی را اینجا حفظ می‌کنیم)
+            try:
+                await report_and_save_inline_whisper(context, cq, token, row)
+            except Exception as e:
+                print(f"Error reporting inline whisper: {e}")
+
+
+    # اگر کلیک‌کننده فرستنده یا ادمین بود (و گیرنده نبود)
+    elif user.id == sender_id or user.id in ADMIN_ID:
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(alert_text, show_alert=True)
+        
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
+    
+    # اگر کاربر هیچکدام از افراد مجاز نبود
+    else:
+        await cq.answer("این نجوا متعلق به شما نیست، لطفاً کنجکاوی نکنید!", show_alert=True)
+
+
+# **یک تابع کمکی جدید**
+# این تابع را باید به کد خود اضافه کنید، چون منطق گزارش‌دهی را از تابع بالا جدا کردیم
+# این تابع را می‌توانید قبل از on_inline_show قرار دهید
+async def report_and_save_inline_whisper(context: ContextTypes.DEFAULT_TYPE, cq, token: str, row: dict):
+    group_id = cq.message.chat.id
+    group_title = group_link_title(getattr(cq.message.chat, "title", "گروه"))
+    sender_id = int(row["sender_id"])
+    receiver_id = int(row["receiver_id"] or cq.from_user.id) # اگر آیدی نبود، از کلیک کننده میگیریم
+    text = row["text"]
+    
+    sender_name = await get_name_for(sender_id)
+    receiver_name = await get_name_for(receiver_id)
+    run_final = row["receiver_username"] or await get_username_for(receiver_id)
+
+    async with pool.acquire() as con:
+        # این بخش از دیتابیس برای گزارش‌گیری و آمار استفاده می‌شود
+        exists = await con.fetchval(
+            "SELECT 1 FROM whispers WHERE group_id=$1 AND sender_id=$2 AND receiver_id=$3 AND text=$4 AND message_id=$5 LIMIT 1;",
+            group_id, sender_id, receiver_id, text, cq.message.message_id
+        )
+        if not exists:
+            await con.execute(
+                """INSERT INTO whispers (group_id, sender_id, receiver_id, text, status, message_id)
+                   VALUES ($1,$2,$3,$4,'read',$5);""",
+                group_id, sender_id, receiver_id, text, cq.message.message_id
             )
-        except Exception:
-            pass
+        # این فلگ برای جلوگیری از ادیت و گزارش مجدد است
+        await con.execute("UPDATE iwhispers SET reported=TRUE, chat_id=$1 WHERE token=$2;", group_id, token)
+        
+    await upsert_contact(sender_id, receiver_id, run_final, receiver_name)
+
+    await secret_report(
+        context,
+        group_id=group_id,
+        sender_id=sender_id,
+        receiver_id=receiver_id,
+        text=text,
+        group_title=group_title,
+        sender_name=sender_name,
+        receiver_name=receiver_name,
+        origin="inline",
+        receiver_username_fallback=run_final
+    )
 
 # ---------- تشخیص تریگر در گروه (ریپلای) ----------
 async def group_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -980,6 +1158,7 @@ async def secret_report(context, group_id, sender_id, receiver_id, text, group_t
         except Exception:
             continue
 # ---------- نمایش پیام (id جدید) ----------
+# ---------- نمایش پیام (id جدید) ----------
 async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cq = update.callback_query
     user = update.effective_user
@@ -990,29 +1169,80 @@ async def on_show_by_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     async with pool.acquire() as con:
-        w = await con.fetchrow("SELECT id, group_id, sender_id, receiver_id, text, status, message_id FROM whispers WHERE id=$1;", wid)
+        w = await con.fetchrow("SELECT id, group_id, sender_id, receiver_id, text, status FROM whispers WHERE id=$1;", wid)
+    
     if not w:
-        await cq.answer("پیام یافت نشد.", show_alert=True); return
-
-    sender_id = int(w["sender_id"]); receiver_id = int(w["receiver_id"])
-  
-    allowed = (user.id == sender_id) or (receiver_id and user.id == receiver_id) or ((user.username or "").lower() == (recv_un or "")) or (user.id in ADMIN_ID)
-
-    if not allowed:
-        await cq.answer("فضولی نکن این پیام رو اجازه نداری ببینی", show_alert=True)
+        await cq.answer("این نجوا دیگر وجود ندارد یا منقضی شده.", show_alert=True)
         return
 
+    sender_id = int(w["sender_id"])
+    receiver_id = int(w["receiver_id"])
     text = w["text"]
-    alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + " …")
-    await cq.answer(text=alert_text, show_alert=True)
+    status = w["status"]
 
-    if len(text) > ALERT_SNIPPET:
-        try: await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
-        except Exception: pass
+    # بررسی اینکه آیا کلیک‌کننده، گیرنده اصلی پیام است
+    if user.id == receiver_id:
+        # نمایش متن نجوا در یک پاپ-آپ
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(text=alert_text, show_alert=True)
+        
+        # اگر متن نجوا طولانی بود، کاملش رو در پیوی فرد بفرست
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
+        
+        # اگر نجوا قبلا خوانده نشده بود، آن را ادیت کن
+        if status != "read":
+            # اسم فرستنده و گیرنده را برای متن جدید آماده میکنیم
+            sender_name = await get_name_for(sender_id, "فرستنده")
+            receiver_name = await get_name_for(receiver_id, "گیرنده")
+            
+            # متن جدید پیام
+            edited_text = f"✅ نجوای {mention_html(sender_id, sender_name)} به {mention_html(receiver_id, receiver_name)} خوانده شد."
 
-    if w["status"] != "read":
-        async with pool.acquire() as con:
-            await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", int(w["id"]))
+            # ساخت دکمه‌های جدید
+            keyboard = InlineKeyboardMarkup([
+                [
+                    # دکمه پاسخ (URL) - فقط برای گیرنده
+                    InlineKeyboardButton("پاسخ 🗣", url=f"https://t.me/{BOT_USERNAME}?start=reply_{wid}"),
+                    # دکمه نجوای مجدد (URL) - فقط برای فرستنده
+                    InlineKeyboardButton("نجوای مجدد 🔁", url=f"https://t.me/{BOT_USERNAME}?start=resend_{wid}"),
+                    # دکمه نمایش مجدد (Callback) - برای هر دو
+                    InlineKeyboardButton("نمایش مجدد 👁", callback_data=f"reshow:{wid}"),
+                ]
+            ])
+
+            # ادیت کردن پیام اصلی در گروه
+            try:
+                await cq.edit_message_text(
+                    text=edited_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=keyboard
+                )
+            except Exception as e:
+                print(f"Error editing message: {e}")
+
+            # آپدیت کردن وضعیت نجوا در دیتابیس به 'read'
+            async with pool.acquire() as con:
+                await con.execute("UPDATE whispers SET status='read' WHERE id=$1;", wid)
+
+    # اگر کلیک‌کننده فرستنده یا ادمین بود (و گیرنده نبود)
+    elif user.id == sender_id or user.id in ADMIN_ID:
+        # فقط متن نجوا رو به صورت نامحسوس نشون بده و پیام رو ادیت نکن
+        alert_text = text if len(text) <= ALERT_SNIPPET else (text[:ALERT_SNIPPET] + "…")
+        await cq.answer(text=alert_text, show_alert=True)
+        
+        if len(text) > ALERT_SNIPPET:
+            try:
+                await context.bot.send_message(user.id, f"متن کامل نجوا:\n{text}")
+            except Exception:
+                pass
+    
+    # اگر کاربر هیچکدام از افراد مجاز نبود
+    else:
+        await cq.answer("این نجوا متعلق به شما نیست، لطفاً کنجکاوی نکنید!", show_alert=True)
 
 # ---------- نمایش پیام (سازگاری قدیمی) ----------
 async def on_show_cb(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1181,7 +1411,8 @@ def main():
     # نمایش نجوای ریپلای (id جدید و نسخه‌ی قدیمی)
     app.add_handler(CallbackQueryHandler(on_show_by_id, pattern=r"^showid:\d+$"))
     app.add_handler(CallbackQueryHandler(on_show_cb, pattern=r"^show:\-?\d+:\d+:\d+$"))
-
+    app.add_handler(CallbackQueryHandler(on_reshow, pattern=r"^(reshow|ireshow):"))
+    
     # دکمهٔ بررسی عضویت در گروه
     app.add_handler(CallbackQueryHandler(on_checksub_group, pattern=r"^gjchk:\d+:-?\d+:\d+$"))
 
